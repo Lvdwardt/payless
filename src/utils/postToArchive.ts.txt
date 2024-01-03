@@ -1,0 +1,69 @@
+// TODO: add page to the archive
+
+
+
+//steps:
+// 1. get the current url
+// 2. make a call to `${BASE_URL}/?run=1&url=${query}`
+// 3. wait for response, it should first return a 302 redirect to archive.is/wip/id
+// 4. then it should return a 302 with a redirect to archive.is/id
+// window.location.replace(`${BASE_URL}/${query}`);
+// export async function postToArchive(query: string, archive: string) {
+  //   const finalUrlRegex = new RegExp(`${archive}/[a-zA-Z0-9]{5}$`, "i");
+
+  //   const addToArchiveResponse = await fetch(
+  //     `https://cors-proxy.lvdw.workers.dev/?${archive}/?run=1&url=${query}`,
+  //     {
+  //       method: "GET",
+  //       headers: { "User-Agent": "insomnia/8.5.1" },
+  //     }
+  //   );
+
+  //   console.log(addToArchiveResponse);
+  //   console.log(addToArchiveResponse.url);
+
+  //   const options = {
+  //     method: "GET",
+  //     url: "https://archive.is/",
+  //     params: {
+  //       run: "1",
+  //       url: "https://www.telegraaf.nl/video/259584726/intieme-foto-s-prins-frederik-geven-heel-duidelijk-beeld",
+  //     },
+  //     headers: { "User-Agent": "insomnia/8.5.1" },
+  //   };
+  //   console.log(options);
+  //   const addToArchiveResponse = await axios.request(options);
+  //   console.log(addToArchiveResponse);
+  //   console.log(addToArchiveResponse.request.responseURL);
+  //   try {
+  //make a call to https://archive.is/wip/XdywT and check the response code
+  // const response = await fetch("https://archive.is/wip/XdywT").then((res) =>
+  //   res.text()
+  // );
+
+  //   } catch (error) {
+  // console.log(error);
+  //   }
+  //this fails because the response code is 302, and it want's to auto redirect to the archive page. we need to handle this
+  //   const options = {
+  //     method: "GET",
+  //     url: "https://cors-proxy.lvdw.workers.dev/?https://archive.is/wip/XdywT",
+  //     headers: { "User-Agent": "insomnia/8.5.1" },
+  //   };
+
+  //   const response = await axios.request(options);
+  //   console.log(response);
+  //   console.log(response.request.responseURL);
+
+  //   console.log(finalUrlRegex.test(response.request.responseURL));
+
+  //   const response = await fetch(
+  //     "https://cors-proxy.lvdw.workers.dev/?https://archive.is/wip/XdywT"
+  //   );
+  //   const finalUrl = response.url;
+  //   console.log(finalUrlRegex.test(finalUrl));
+
+  //if this is in the format of https://archive.is/XdywT then we are good to go
+
+//   return "";
+}

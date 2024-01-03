@@ -9,28 +9,28 @@ export default defineConfig({
       base: "/",
       registerType: "autoUpdate",
       manifest: {
-        name: "Adless-share",
-        short_name: "Adless",
+        name: "PayLess",
+        short_name: "PayLess",
         theme_color: "#111111",
         icons: [
           {
-            src: "maskable_icon.png",
+            src: "payless.png",
             type: "image/png",
             sizes: "192x192",
             purpose: "maskable",
           },
           {
-            src: "Babble-Orange-S.png",
+            src: "payless.png",
             sizes: "64x64 32x32 24x24 16x16",
             type: "image/x-icon",
           },
           {
-            src: "Babble-Orange-S.png",
+            src: "payless.png",
             type: "image/png",
             sizes: "192x192",
           },
           {
-            src: "Babble-Orange-S.png",
+            src: "payless.png",
             type: "image/png",
             sizes: "512x512",
           },
@@ -38,7 +38,7 @@ export default defineConfig({
         display: "standalone",
         start_url: "/",
         background_color: "#111111",
-        description: "View with adless",
+        description: "View with PayLess",
         share_target: {
           action: "/",
           method: "GET",
