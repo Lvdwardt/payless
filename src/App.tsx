@@ -1,15 +1,66 @@
+import useLocalStorageState from "use-local-storage-state";
 import Timer from "./components/timer";
 import useLinkToArchive from "./hooks/useLinkToArchive";
 import usePwa from "./hooks/usePwa";
 
 export default function App() {
-  const { isInstalled, hasQuery } = useLinkToArchive();
+  const [fontScale, setFontScale] = useLocalStorageState("fontScale", {
+    defaultValue: 1,
+  });
+
+  const { isInstalled, hasQuery, article, articleLink, error } =
+    useLinkToArchive(fontScale);
   const showAd = import.meta.env.VITE_SHOW_AD === "true";
 
+  // render the article if it exists
+  if (article !== "") {
+    return (
+      <div className="w-fit">
+        {/* //go to article */}
+        <div className="flex justify-between items-center pb-8 p-4">
+          <a
+            href={articleLink}
+            target="_blank"
+            rel="noreferrer"
+            className="text-white"
+          >
+            Go to article
+          </a>
+
+          {/* dropdown for font-scale, 0.5 0.75 1 1.25 1.5 1.75 2 */}
+          <div className="flex items-center">
+            <label className="text-white mr-2">Font size:</label>
+            <select
+              className="text-black"
+              value={fontScale}
+              onChange={(e) => {
+                setFontScale(Number(e.target.value));
+                window.location.reload();
+              }}
+            >
+              {Array.from(Array(7).keys()).map((i) => {
+                return (
+                  <option key={i} value={0.5 + i * 0.25}>
+                    {0.5 + i * 0.25} x
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div
+          className="flex lg:justify-center revert-box-sizing"
+          dangerouslySetInnerHTML={{ __html: article }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen w-screen font-bold p-8 bg-[#1f295b] font-sans">
+    <div className="min-h-screen font-bold p-8 bg-[#1f295b] font-sans text-white tailwind-base">
       <nav className="flex justify-between items-center pb-8">
-        <img src="payless_small.png" alt="logo" className="w-20" />
+        <img src="/payless_small.png" alt="logo" className="w-20" />
       </nav>
       <div className="w-full lg:px-32">
         <h1 className="text-2xl sm:text-5xl">Welcome to PayLess!</h1>
@@ -17,8 +68,8 @@ export default function App() {
           The easiest way to skip the paywall.
         </h2>
 
-        {hasQuery && <div>Advertisement</div>}
-
+        {/* {hasQuery && <div>Advertisement</div>} */}
+        {hasQuery && error && <h2>{error}</h2>}
         {hasQuery && showAd && (
           <p className="text-xl sm:text-3xl pt-4 pb-8">
             <Timer />

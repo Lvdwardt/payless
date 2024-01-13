@@ -1,4 +1,5 @@
-import * as cheerio from "cheerio";
+import { parse } from "node-html-parser";
+import { notWorkingList } from "../data/notWorkingList";
 
 export async function getArchive(query: string, archive: string) {
   function validURL(str: string) {
@@ -18,12 +19,19 @@ export async function getArchive(query: string, archive: string) {
     return "";
   }
 
+  console.log(query.split("/")[2]);
+  if (notWorkingList.includes(query.split("/")[2])) {
+    return "Not working";
+  }
+
   const url = `${archive}${query}`;
   try {
     const data = await fetch(url).then((res) => res.text());
-    const $ = cheerio.load(data);
-    const firstLink = $(".TEXT-BLOCK a").first().attr("href");
-    return firstLink || "No link found";
+    const root = parse(data);
+    return (
+      root.querySelector(".TEXT-BLOCK a")?.getAttribute("href") ||
+      "No link found"
+    );
   } catch (error) {
     console.log(error);
     return "No link found";

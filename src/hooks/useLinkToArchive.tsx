@@ -2,12 +2,17 @@ const BASE_URL = "https://archive.is/";
 import { useEffect, useState } from "react";
 import { getArchive } from "../utils/getArchive";
 import useLocalStorageState from "use-local-storage-state";
+import getArticle from "../utils/getArticle";
 
-export default function useLinkToArchive() {
+export default function useLinkToArchive(fontScale: number) {
   const [query, setQuery] = useState("");
   const [isInstalled] = useLocalStorageState("isInstalled", {
     defaultValue: false,
   });
+
+  const [articleLink, setArticleLink] = useState("");
+  const [article, setArticle] = useState("");
+  const [error, setError] = useState("");
 
   const hasQuery = query !== "";
   const showAd = import.meta.env.VITE_SHOW_AD === "true";
@@ -28,21 +33,29 @@ export default function useLinkToArchive() {
 
       setQuery(query);
       const link = await getArchive(query, BASE_URL);
-      if (link && link !== "No link found") {
+      if (link && link !== "No link found" && link !== "Not working") {
         setTimeout(() => {
-          window.location.replace(link);
+          setArticleLink(link);
+          console.log("link", link);
+          getArticle(link, BASE_URL, query, fontScale).then((article) => {
+            setArticle(article);
+          });
         }, timeBeforeRedirect);
       } else if (link === "No link found") {
+        console.log("No link found");
         setTimeout(() => {
           window.location.replace(`${BASE_URL}?run=1&url=${query}`);
         }, timeBeforeRedirect);
-      } else {
-        return;
+      } else if (link === "Not working") {
+        // website user wants to archive is not working
+        setError(
+          `I'm sorry, ${query.split("/")[2]} is not working via this method.`
+        );
       }
     }
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { isInstalled, hasQuery };
+  return { isInstalled, hasQuery, article, articleLink, error };
 }

@@ -24,5 +24,8 @@ dist-ssr
 *.sw?
 .vercel
 
-#private
+# Dotenv
 .env
+
+# Partytown
+~partytown

@@ -12,3 +12,21 @@ export type Provider = {
   info?: string;
   uploadNewUrl?: string;
 };
+
+export type Rules = {
+  removeRules?: string[];
+  alterRules?: {
+    selector?: string;
+    class?: string;
+    style: string;
+  }[];
+};
+
+export type Site = {
+  [key: string]: Rules;
+};
+
+export type MultipleSites = {
+  sites: string[];
+  rules: Rules;
+};

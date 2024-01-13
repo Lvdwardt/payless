@@ -16,7 +16,7 @@ export default function usePwa() {
   useEffect(() => {
     const handler = (e: BeforeInstallPromptEvent) => {
       e.preventDefault();
-      console.log("we are being triggered :D");
+      console.log("PWA is supported");
       setSupportsPWA(true);
       setPromptInstall(e);
     };
