@@ -31,18 +31,19 @@ export default function useLinkToArchive(fontScale: number) {
         query = window.location.pathname.slice(1);
       }
 
+      if (query === "") {
+        return;
+      }
       setQuery(query);
       const link = await getArchive(query, BASE_URL);
       if (link && link !== "No link found" && link !== "Not working") {
         setTimeout(() => {
           setArticleLink(link);
-          console.log("link", link);
           getArticle(link, BASE_URL, query, fontScale).then((article) => {
             setArticle(article);
           });
         }, timeBeforeRedirect);
       } else if (link === "No link found") {
-        console.log("No link found");
         setTimeout(() => {
           window.location.replace(`${BASE_URL}?run=1&url=${query}`);
         }, timeBeforeRedirect);
@@ -54,6 +55,7 @@ export default function useLinkToArchive(fontScale: number) {
       }
     }
     fetchData();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

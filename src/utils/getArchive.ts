@@ -1,5 +1,6 @@
 import { parse } from "node-html-parser";
 import { notWorkingList } from "../data/notWorkingList";
+import { trackEvent } from "../hooks/useUmami";
 
 export async function getArchive(query: string, archive: string) {
   function validURL(str: string) {
@@ -19,8 +20,14 @@ export async function getArchive(query: string, archive: string) {
     return "";
   }
 
-  console.log(query.split("/")[2]);
-  if (notWorkingList.includes(query.split("/")[2])) {
+  const website = query.split("/")[2];
+
+  if (notWorkingList.includes(website)) {
+    trackEvent("not working", {
+      website: website,
+      status: "not working",
+    });
+
     return "Not working";
   }
 
@@ -28,10 +35,20 @@ export async function getArchive(query: string, archive: string) {
   try {
     const data = await fetch(url).then((res) => res.text());
     const root = parse(data);
-    return (
-      root.querySelector(".TEXT-BLOCK a")?.getAttribute("href") ||
-      "No link found"
-    );
+
+    const link = root.querySelector(".TEXT-BLOCK a")?.getAttribute("href");
+    if (link) {
+      trackEvent("working", {
+        website: website,
+      });
+      return link;
+    } else {
+      trackEvent("no link found", {
+        website: website,
+        status: "no link found",
+      });
+      return "No link found";
+    }
   } catch (error) {
     console.log(error);
     return "No link found";
