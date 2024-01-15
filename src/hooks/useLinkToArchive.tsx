@@ -26,6 +26,9 @@ export default function useLinkToArchive(fontScale: number) {
       const params = new URLSearchParams(window.location.search);
 
       let query = params.get("text") || "";
+      if (query.includes("?")) {
+        query = query.slice(0, query.indexOf("?"));
+      }
 
       if (query === "") {
         query = window.location.pathname.slice(1);

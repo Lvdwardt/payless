@@ -25,7 +25,6 @@ export async function getArchive(query: string, archive: string) {
   if (notWorkingList.includes(website)) {
     trackEvent("not working", {
       website: website,
-      status: "not working",
     });
 
     return "Not working";
@@ -45,11 +44,14 @@ export async function getArchive(query: string, archive: string) {
     } else {
       trackEvent("no link found", {
         website: website,
-        status: "no link found",
       });
       return "No link found";
     }
   } catch (error) {
+    trackEvent("error", {
+      website: website,
+      error: error,
+    });
     console.log(error);
     return "No link found";
   }
