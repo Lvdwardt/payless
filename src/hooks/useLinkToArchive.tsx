@@ -1,10 +1,11 @@
 const BASE_URL = "https://archive.is/";
 import { useEffect, useState } from "react";
-import { getArchive } from "../utils/getArchive";
+import { getArchive } from "@/utils/getArchive";
 import useLocalStorageState from "use-local-storage-state";
-import getArticle from "../utils/getArticle";
+import getArticle from "@/utils/getArticle";
+import { Font } from "@/types";
 
-export default function useLinkToArchive(fontScale: number) {
+export default function useLinkToArchive(font: Font) {
   const [query, setQuery] = useState("");
   const [isInstalled] = useLocalStorageState("isInstalled", {
     defaultValue: false,
@@ -24,8 +25,10 @@ export default function useLinkToArchive(fontScale: number) {
   useEffect(() => {
     async function fetchData() {
       const params = new URLSearchParams(window.location.search);
-
       let query = params.get("text") || "";
+      if (query.includes("http")) {
+        query = query.slice(query.indexOf("http"));
+      }
       if (query.includes("?")) {
         query = query.slice(0, query.indexOf("?"));
       }
@@ -42,7 +45,7 @@ export default function useLinkToArchive(fontScale: number) {
       if (link && link !== "No link found" && link !== "Not working") {
         setTimeout(() => {
           setArticleLink(link);
-          getArticle(link, BASE_URL, query, fontScale).then((article) => {
+          getArticle(link, BASE_URL, query, font).then((article) => {
             setArticle(article);
           });
         }, timeBeforeRedirect);

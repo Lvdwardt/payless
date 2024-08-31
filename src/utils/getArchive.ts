@@ -1,6 +1,6 @@
 import { parse } from "node-html-parser";
-import { notWorkingList } from "../data/notWorkingList";
-import { trackEvent } from "../hooks/useUmami";
+import { notWorkingList } from "@/data/notWorkingList";
+import { trackEvent } from "@/hooks/useUmami";
 
 export async function getArchive(query: string, archive: string) {
   function validURL(str: string) {

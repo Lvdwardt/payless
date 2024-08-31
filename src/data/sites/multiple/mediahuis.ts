@@ -1,4 +1,4 @@
-import type { MultipleSites } from "../../types";
+import type { MultipleSites } from "@/types";
 
 export const mediahuis: MultipleSites = {
   sites: [
@@ -59,6 +59,12 @@ export const mediahuis: MultipleSites = {
       {
         selector: "global",
         style: "width: 700px;",
+      },
+    ],
+    addRules: [
+      {
+        selector: "main > :nth-child(3) > :nth-child(2)",
+        style: "display: none;",
       },
     ],
   },

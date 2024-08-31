@@ -20,6 +20,11 @@ export type Rules = {
     class?: string;
     style: string;
   }[];
+  addRules?: {
+    selector: string;
+    class?: string;
+    style: string;
+  }[];
 };
 
 export type Site = {
@@ -29,4 +34,9 @@ export type Site = {
 export type MultipleSites = {
   sites: string[];
   rules: Rules;
+};
+
+export type Font = {
+  scale: number;
+  height?: number;
 };

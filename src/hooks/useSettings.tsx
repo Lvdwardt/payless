@@ -1,5 +1,5 @@
 import useLocalStorageState from "use-local-storage-state";
-import { Provider } from "../types";
+import { Provider } from "@/types";
 
 const providers: Provider[] = [
   {

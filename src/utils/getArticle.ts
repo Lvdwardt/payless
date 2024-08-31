@@ -1,14 +1,14 @@
 import DOMPurify from "isomorphic-dompurify";
 import parse from "node-html-parser";
-import { sites } from "../data/siteRules";
-import { Rules } from "../types";
-import { allSitesRules } from "../data/allSites";
+import { sites } from "@/data/siteRules";
+import { Font, Rules } from "@/types";
+import { allSitesRules } from "@/data/allSites";
 
 export default async function getArticle(
   link: string,
   baseURL: string,
   originalLink: string,
-  fontScale: number = 1
+  font: Font
 ) {
   baseURL = baseURL.replace(/\/$/, "");
   const site = new URL(originalLink).hostname;
@@ -24,7 +24,7 @@ export default async function getArticle(
     return "";
   }
 
-  updateFontsizes(content, fontScale);
+  updateFontsizes(content, font);
 
   //fix images
   fixImages(content, baseURL);
@@ -65,6 +65,11 @@ function applyRules(rules: Rules, content: HTMLElement) {
       }
     );
   }
+  if (rules.addRules) {
+    rules.addRules.forEach((rule) => {
+      content.querySelector(rule.selector)?.setAttribute("style", rule.style);
+    });
+  }
 }
 
 function fixImages(content: HTMLElement, baseURL: string) {
@@ -88,7 +93,7 @@ function fixImages(content: HTMLElement, baseURL: string) {
   });
 }
 
-function updateFontsizes(content: HTMLElement, fontScale: number) {
+function updateFontsizes(content: HTMLElement, font: Font) {
   //   find all the elements with font size, and scale them up
   const elements = content.querySelectorAll("*");
   elements.forEach((element) => {
@@ -99,7 +104,17 @@ function updateFontsizes(content: HTMLElement, fontScale: number) {
         const size = parseInt(fontSize[1]);
         element.setAttribute(
           "style",
-          style.replace(fontSize[0], `font-size: ${size * fontScale}px`)
+          style.replace(fontSize[0], `font-size: ${size * font.scale}px`)
+        );
+      }
+    }
+    if (font.height && style && style.includes("line-height:")) {
+      const lineHeight = style.match(/line-height: ?(\d+)px/);
+      if (lineHeight) {
+        const height = parseInt(lineHeight[1]);
+        element.setAttribute(
+          "style",
+          style.replace(lineHeight[0], `line-height: ${height * font.height}px`)
         );
       }
     }

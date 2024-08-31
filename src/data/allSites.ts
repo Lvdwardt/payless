@@ -1,5 +1,4 @@
-// #facebook > div > div > div > div > div > div:nth-child(2) > a > div
-import type { Rules } from "../types";
+import type { Rules } from "@/types";
 
 export const allSitesRules: Rules = {
   removeRules: [

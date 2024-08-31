@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BeforeInstallPromptEvent } from "../types";
+import { BeforeInstallPromptEvent } from "@/types";
 import useLocalStorageState from "use-local-storage-state";
 
 export default function usePwa() {

@@ -1,15 +1,15 @@
-import type { MultipleSites, Site } from "../types";
-import { limburger } from "./sites/limburger";
-import { dpg } from "./sites/dpg";
-import { mediahuis } from "./sites/mediahuis";
+import type { MultipleSites, Site } from "@/types";
+import { singleSites } from "./sites/single";
+import { multipleSites } from "./sites/multiple";
 
 export const sites: Site = {
   // multiple sites
-  ...getRulesForMultipleSites(dpg),
-  ...getRulesForMultipleSites(mediahuis),
-
+  ...multipleSites.reduce(
+    (acc, site) => ({ ...acc, ...getRulesForMultipleSites(site) }),
+    {}
+  ),
   // single sites
-  ...limburger,
+  ...singleSites,
 };
 
 function getRulesForMultipleSites(siteGroup: MultipleSites): Site {

@@ -1,4 +1,4 @@
-import type { MultipleSites } from "../../types";
+import type { MultipleSites } from "@/types";
 
 export const dpg: MultipleSites = {
   sites: [
@@ -14,6 +14,7 @@ export const dpg: MultipleSites = {
   rules: {
     removeRules: [
       "#page-main-content > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > div > div:nth-child(2)",
+      'div[style*="z-index:800"]',
     ],
     alterRules: [
       {

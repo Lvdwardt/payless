@@ -1,4 +1,4 @@
-import { Site } from "../../types";
+import { Site } from "@/types";
 
 export const limburger: Site = {
   "www.limburger.nl": {

@@ -2,50 +2,109 @@ import useLocalStorageState from "use-local-storage-state";
 import Timer from "./components/timer";
 import useLinkToArchive from "./hooks/useLinkToArchive";
 import usePwa from "./hooks/usePwa";
+import { useEffect, useRef } from "react";
+import { trackEvent } from "./hooks/useUmami";
+import Loader from "./components/loader";
 
 export default function App() {
-  const [fontScale, setFontScale] = useLocalStorageState("fontScale", {
-    defaultValue: 1,
+  const [font, setFont] = useLocalStorageState("font", {
+    defaultValue: {
+      scale: 1,
+      height: undefined as number | undefined,
+    },
   });
 
   const { isInstalled, hasQuery, article, articleLink, error } =
-    useLinkToArchive(fontScale);
-  const showAd = import.meta.env.VITE_SHOW_AD === "true";
+    useLinkToArchive(font);
 
+  // fit article to screen
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!article) {
+      return;
+    }
+    if (contentRef.current) {
+      const contentWidth = contentRef.current.getBoundingClientRect().width;
+      const viewportWidth = document.documentElement.clientWidth;
+      if (viewportWidth > contentWidth) {
+        return;
+      }
+      const html = document.querySelector("html");
+      if (html) {
+        html.style.zoom = `${viewportWidth / contentWidth}`;
+      }
+    }
+  }, [article]);
+
+  const showAd = import.meta.env.VITE_SHOW_AD === "true";
   // render the article if it exists
   if (article !== "") {
     return (
-      <div className="w-fit">
+      <div className="w-fit mx-auto" ref={contentRef}>
         {/* //go to article */}
-        <div className="flex justify-between items-center pb-8 p-4">
+        <div className="flex justify-between items-center p-4">
           <a
             href={articleLink}
             target="_blank"
             rel="noreferrer"
             className="text-white"
+            onClick={() => {
+              trackEvent("go to article", {
+                articleLink,
+              });
+            }}
           >
             Go to article
           </a>
 
-          {/* dropdown for font-scale, 0.5 0.75 1 1.25 1.5 1.75 2 */}
-          <div className="flex items-center">
-            <label className="text-white mr-2">Font size:</label>
-            <select
-              className="text-black"
-              value={fontScale}
-              onChange={(e) => {
-                setFontScale(Number(e.target.value));
-                window.location.reload();
-              }}
-            >
-              {Array.from(Array(7).keys()).map((i) => {
-                return (
-                  <option key={i} value={0.5 + i * 0.25}>
-                    {0.5 + i * 0.25} x
-                  </option>
-                );
-              })}
-            </select>
+          <div className="flex flex-col items-end">
+            <div className="flex items-center">
+              <label className="text-white mr-2">Font size:</label>
+              <select
+                className="text-black"
+                value={font.scale}
+                onChange={(e) => {
+                  setFont((prev) => ({
+                    ...prev,
+                    scale: Number(e.target.value),
+                  }));
+                  window.location.reload();
+                }}
+              >
+                {Array.from(Array(7).keys()).map((i) => {
+                  return (
+                    <option key={i} value={0.5 + i * 0.25}>
+                      {0.5 + i * 0.25} x
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="flex items-center">
+              <label className="text-white mr-2">Line height:</label>
+
+              <select
+                className="text-black"
+                value={font.height}
+                onChange={(e) => {
+                  setFont((prev) => ({
+                    ...prev,
+                    height: Number(e.target.value),
+                  }));
+                  window.location.reload();
+                }}
+              >
+                <option value={undefined}>unset</option>
+
+                {Array.from(Array(7).keys()).map((i) => {
+                  return (
+                    <option key={i} value={0.5 + i * 0.25}>
+                      {0.5 + i * 0.25} x
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -67,7 +126,7 @@ export default function App() {
         <h2 className="text-xl sm:text-3xl pt-4 pb-8">
           The easiest way to skip the paywall.
         </h2>
-
+        {hasQuery && <Loader />}
         {/* {hasQuery && <div>Advertisement</div>} */}
         {hasQuery && error && <h2>{error}</h2>}
         {hasQuery && showAd && (
@@ -75,8 +134,8 @@ export default function App() {
             <Timer />
           </p>
         )}
+        {!isInstalled && !hasQuery && <DownloadPWA />}
         <div className="lg:hidden">
-          {!isInstalled && !hasQuery && <DownloadPWA />}
           {isInstalled && !hasQuery && (
             <>
               <h3 className="text-lg sm:text-2xl pb-4">
@@ -98,78 +157,32 @@ export default function App() {
             </>
           )}
         </div>
-        {!hasQuery && (
-          <div className="hidden md:block pt-8">
-            <h3 className="text-lg sm:text-2xl pb-4">how to install:</h3>
-            <ol className="text-base sm:text-xl pl-4 pb-8">
-              <li>
-                <strong className="text-red-500">
-                  1. Visit this page on your phone.
-                </strong>{" "}
-                Use Google Chrome for the best user experience.
-              </li>
-              <li className="flex flex-col">
-                <p>clik on the install button.</p>
-              </li>
-              <li>3. Tap "Add to Home Screen".</li>
-            </ol>
-            <h3 className="text-lg sm:text-2xl pb-4">how to use:</h3>
-            <ol className="text-base sm:text-xl pl-4">
-              <li>1. go to the website you want to read.</li>
-              <li>2. if you encounter a paywall, press the share button.</li>
-              <li>3. find and tap the "PayLess" icon.</li>
-              <li>4. read the article!</li>
-            </ol>
-          </div>
-        )}
       </div>
     </div>
   );
 }
 export const DownloadPWA = () => {
-  const { pwaCheckLoading, supportsPWA, onClick } = usePwa();
+  const { onClick } = usePwa();
 
-  if (!supportsPWA && !pwaCheckLoading) {
-    return (
-      <div>
-        <p className="text-red-300">
-          PayLess isn't supported by your browser. Please use Google chrome for
-          the best experience
-        </p>
-        <button
-          className="text-white my-4"
-          onClick={() => {
-            window.open("https://www.google.com/chrome/", "_blank");
-          }}
-        >
-          Download Chrome here
-        </button>
-      </div>
-    );
-  } else {
-    return (
-      <div>
-        <h3 className="text-lg sm:text-2xl pb-4">how to install:</h3>
-        <ol className="text-base sm:text-xl pl-4 pb-8">
-          <li>1. Visit this page on your phone.</li>
-          <li className="flex flex-col">
-            <p>
-              clik on the button below. If you don't see the button, try
-              installing PayLess while using the Google Chrome app.
-            </p>
-            <button
-              className="my-2"
-              id="setup_button"
-              aria-label="Install app"
-              title="Install app"
-              onClick={onClick}
-            >
-              Install
-            </button>
-          </li>
-          <li>3. Tap "Add to Home Screen".</li>
-        </ol>
-      </div>
-    );
-  }
+  return (
+    <div>
+      <h3 className="text-lg sm:text-2xl pb-4">how to install:</h3>
+      <ol className="text-base sm:text-xl pl-4 pb-8">
+        <li>1. On your phone, open this page in the Google Chrome browser</li>
+        <li className="flex flex-col">
+          <p>2. clik on the button below.</p>
+          <button
+            className="my-2 bg-[#A96CDA] text-white px-4 py-2 rounded-lg w-fit "
+            id="setup_button"
+            aria-label="Install app"
+            title="Install app"
+            onClick={onClick}
+          >
+            Install
+          </button>
+        </li>
+        <li>3. Tap "Add to Home Screen".</li>
+      </ol>
+    </div>
+  );
 };
