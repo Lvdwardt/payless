@@ -12,7 +12,6 @@ export default async function getArticle(
 ) {
   baseURL = baseURL.replace(/\/$/, "");
   const site = new URL(originalLink).hostname;
-  console.log(site);
 
   const data = await fetch(link).then((res) => res.text());
   const root = parse(data);
@@ -92,31 +91,42 @@ function fixImages(content: HTMLElement, baseURL: string) {
     }
   });
 }
-
 function updateFontsizes(content: HTMLElement, font: Font) {
-  //   find all the elements with font size, and scale them up
   const elements = content.querySelectorAll("*");
+
   elements.forEach((element) => {
     const style = element.getAttribute("style");
-    if (style && style.includes("font-size:")) {
-      const fontSize = style.match(/font-size: ?(\d+)px/);
-      if (fontSize) {
-        const size = parseInt(fontSize[1]);
-        element.setAttribute(
-          "style",
-          style.replace(fontSize[0], `font-size: ${size * font.scale}px`)
-        );
-      }
-    }
-    if (font.height && style && style.includes("line-height:")) {
+    if (!style) return;
+
+    let newStyle = style;
+    let updated = false;
+
+    if (font.height && style.includes("line-height:")) {
       const lineHeight = style.match(/line-height: ?(\d+)px/);
       if (lineHeight) {
         const height = parseInt(lineHeight[1]);
-        element.setAttribute(
-          "style",
-          style.replace(lineHeight[0], `line-height: ${height * font.height}px`)
+        newStyle = newStyle.replace(
+          lineHeight[0],
+          `line-height: ${height * font.height}px`
         );
+        updated = true;
       }
+    }
+
+    if (style.includes("font-size:")) {
+      const fontSize = style.match(/font-size: ?(\d+)px/);
+      if (fontSize) {
+        const size = parseInt(fontSize[1]);
+        newStyle = newStyle.replace(
+          fontSize[0],
+          `font-size: ${size * font.scale}px`
+        );
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      element.setAttribute("style", newStyle);
     }
   });
 }
