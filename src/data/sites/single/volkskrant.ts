@@ -63,6 +63,10 @@ export const volkskrant: Site = {
         style:
           "align-items:center;box-sizing:border-box;display:flex;justify-content:center;min-height:56px;position:relative;",
       },
+      {
+        selector: "#article-content > header",
+        style: "background-color: white;",
+      },
     ],
   },
 };
