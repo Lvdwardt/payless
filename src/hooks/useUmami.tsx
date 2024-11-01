@@ -1,6 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-//@ts-nocheck
+declare global {
+  interface Window {
+    umami?: {
+      track: (payload: UmamiPayload) => void;
+    };
+  }
+}
 
 type UmamiPayload = {
   hostname?: string;
@@ -11,7 +15,7 @@ type UmamiPayload = {
   url?: string;
   website?: string;
   name?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 };
 
 // disable in dev mode
@@ -23,7 +27,7 @@ if (import.meta.env.DEV) {
 
 const trackEvent = (
   eventName: string,
-  eventData?: Record<string, any>
+  eventData?: Record<string, unknown>
 ): void => {
   if (window.umami) {
     const defaultPayload = {

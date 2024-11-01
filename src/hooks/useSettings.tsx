@@ -1,6 +1,7 @@
 import useLocalStorageState from "use-local-storage-state";
 import { Provider } from "@/types";
 
+// @TODO: implement
 const providers: Provider[] = [
   {
     archiveUrl: "https://archive.is/",
@@ -11,10 +12,6 @@ const providers: Provider[] = [
   },
   {
     archiveUrl: "https://12ft.io/",
-  },
-  {
-    archiveUrl: "https://webcache.googleusercontent.com/search?q=cache:",
-    info: "Very unreliable",
   },
 ];
 

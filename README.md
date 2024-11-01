@@ -1,30 +1,61 @@
-# React + TypeScript + Vite
+# PayLess
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+PayLess is a Progressive Web App (PWA) that allows users to access archived versions of web articles through [archive.is](https://archive.is/). It helps bypass paywalls and provides a better archive.is experience optimized for mobile devices. It's primary purpose is for bypassing paywalls on news sources in comination with the Google Discover Feed on Android.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Fetch Archived Articles**: Retrieve archived versions of web pages to bypass paywalls.
+- **Share Target Integration**: Easily share articles to the pwa via the share target.
+- **Mobile Friendly Design**: Optimized for mobile devices and the Google Discover Feed on Android.
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+1. Clone the repository:
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+```bash
+git clone https://github.com/LeonvdW/payless.git
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+2. Install dependencies:
+
+```bash
+bun install
+```
+
+3. Start the development server:
+
+```bash
+bun dev
+```
+
+4. Open the application in your browser:
+
+```bash
+open http://localhost:5173/
+```
+
+## Project Structure
+
+- `src/` - Main source code directory.
+  - `hooks/` - Custom React hooks.
+  - `useLinkToArchive.tsx` - Hook for fetching and managing archived links.
+  - `utils/` - Utility functions for interacting with the archive service.
+  - `index.css` - Global styles using Tailwind CSS.
+- `public/` - Static assets and icons.
+- `vite.config.ts` - Vite configuration file.
+- `tsconfig.json` - TypeScript configuration.
+
+## Technologies Used
+
+- **React** with **TypeScript**
+- **Vite**
+- **Tailwind CSS**
+- **use-local-storage-state**
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+## License
+
+This project is licensed under the MIT License.
