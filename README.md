@@ -34,17 +34,6 @@ bun dev
 open http://localhost:5173/
 ```
 
-## Project Structure
-
-- `src/` - Main source code directory.
-  - `hooks/` - Custom React hooks.
-  - `useLinkToArchive.tsx` - Hook for fetching and managing archived links.
-  - `utils/` - Utility functions for interacting with the archive service.
-  - `index.css` - Global styles using Tailwind CSS.
-- `public/` - Static assets and icons.
-- `vite.config.ts` - Vite configuration file.
-- `tsconfig.json` - TypeScript configuration.
-
 ## Technologies Used
 
 - **React** with **TypeScript**
