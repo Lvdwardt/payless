@@ -99,5 +99,5 @@ export default function useLinkToArchive(font: Font) {
     return query;
   }
 
-  return { isInstalled, hasQuery, article, articleLink, error };
+  return { isInstalled, hasQuery, article, articleLink, error, query };
 }

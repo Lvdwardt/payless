@@ -14,7 +14,7 @@ export default function App() {
     },
   });
 
-  const { isInstalled, hasQuery, article, articleLink, error } =
+  const { isInstalled, hasQuery, article, articleLink, error, query } =
     useLinkToArchive(font);
 
   // fit article to screen
@@ -127,6 +127,9 @@ export default function App() {
           The easiest way to skip the paywall.
         </h2>
         {hasQuery && <Loader />}
+        {hasQuery && (
+          <span className="text-balance text-sm mt-4">loading: {query}</span>
+        )}
         {/* {hasQuery && <div>Advertisement</div>} */}
         {hasQuery && error && <h2>{error}</h2>}
         {hasQuery && showAd && (
