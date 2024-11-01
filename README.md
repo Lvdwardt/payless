@@ -59,3 +59,5 @@ Contributions are welcome! Please open an issue or submit a pull request.
 ## License
 
 This project is licensed under the MIT License.
+
+[![wakatime](https://wakatime.com/badge/user/2a79d314-d9db-4a38-95db-aa9731fb8118/project/018cc8c8-9434-453d-82af-73663eafc258.svg)](https://wakatime.com/badge/user/2a79d314-d9db-4a38-95db-aa9731fb8118/project/018cc8c8-9434-453d-82af-73663eafc258)
