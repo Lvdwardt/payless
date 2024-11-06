@@ -25,7 +25,7 @@ export default function useLinkToArchive(font: Font) {
 
   useEffect(() => {
     async function fetchData() {
-      const query = getQuery();
+      const query = decodeURIComponent(getQuery());
 
       if (!query) {
         return;

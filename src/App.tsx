@@ -54,7 +54,7 @@ export default function App() {
               });
             }}
           >
-            Go to article
+            View on archive.today
           </a>
 
           <div className="flex flex-col items-end">
@@ -128,7 +128,13 @@ export default function App() {
         </h2>
         {hasQuery && <Loader />}
         {hasQuery && (
-          <span className="text-balance text-sm mt-4">loading: {query}</span>
+          <>
+            <span className="text-balance text-sm mt-4">loading: {query}</span>
+            <span>
+              view on archive.is{" "}
+              <a href={`https://archive.is/${query}`}>here</a>
+            </span>
+          </>
         )}
         {/* {hasQuery && <div>Advertisement</div>} */}
         {hasQuery && error && <h2>{error}</h2>}

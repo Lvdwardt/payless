@@ -17,6 +17,7 @@ export async function getArchive(query: string, archive: string) {
   }
 
   if (!query || !validURL(query)) {
+    alert(`invalid query: ${query}`);
     return "";
   }
 

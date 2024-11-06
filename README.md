@@ -1,6 +1,6 @@
 # PayLess
 
-PayLess is a Progressive Web App (PWA) that allows users to access archived versions of web articles through [archive.is](https://archive.is/). It helps bypass paywalls and provides a better archive.is experience optimized for mobile devices. It's primary purpose is for bypassing paywalls on news sources in comination with the Google Discover Feed on Android.
+PayLess is a Progressive Web App (PWA) that allows users to access archived versions of web articles through [archive.today](https://archive.today/). It helps bypass paywalls and provides a better archive.today experience optimized for mobile devices. It's primary purpose is for bypassing paywalls on news sources in comination with the Google Discover Feed on Android.
 
 ## Features
 
