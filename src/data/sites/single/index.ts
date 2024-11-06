@@ -1,3 +1,4 @@
+import { emerce } from "./emerce";
 import { ft } from "./ft";
 import { limburger } from "./limburger";
 import { trouw } from "./trouw";
@@ -8,4 +9,5 @@ export const singleSites = {
   ...trouw,
   ...volkskrant,
   ...ft,
+  ...emerce,
 };

@@ -12,7 +12,7 @@ export const allSitesRules: Rules = {
     // global
     {
       selector: "global",
-      style: "min-width: 1024px;",
+      style: "min-width: 1024px; background-color: #fff;",
     },
   ],
 };

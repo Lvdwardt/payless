@@ -128,13 +128,13 @@ export default function App() {
         </h2>
         {hasQuery && <Loader />}
         {hasQuery && (
-          <>
+          <div className="flex flex-col">
             <span className="text-balance text-sm mt-4">loading: {query}</span>
-            <span>
+            <span className="text-sm mt-4">
               view on archive.is{" "}
               <a href={`https://archive.is/${query}`}>here</a>
             </span>
-          </>
+          </div>
         )}
         {/* {hasQuery && <div>Advertisement</div>} */}
         {hasQuery && error && <h2>{error}</h2>}
