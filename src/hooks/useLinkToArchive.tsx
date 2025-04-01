@@ -3,6 +3,7 @@ import { getArchive } from "@/utils/getArchive";
 import useLocalStorageState from "use-local-storage-state";
 import getArticle from "@/utils/getArticle";
 import { Font } from "@/types";
+import { getUrlFromSearchApp } from "@/utils/getUrlFromSearchApp";
 
 const BASE_URL = "https://archive.is/";
 
@@ -25,14 +26,14 @@ export default function useLinkToArchive(font: Font) {
 
   useEffect(() => {
     async function fetchData() {
-      const query = decodeURIComponent(getQuery());
+      const encodedQuery = await getQuery();
+      const query = decodeURIComponent(encodedQuery);
 
       if (!query) {
         return;
       }
 
       setQuery(query);
-      console.log(query);
       const link = await getArchive(query, BASE_URL);
 
       if (link && link !== "No link found" && link !== "Not working") {
@@ -55,13 +56,13 @@ export default function useLinkToArchive(font: Font) {
     fetchData();
   }, []);
 
-  function getQuery() {
+  async function getQuery() {
     let query = getQueryParam("text");
 
     if (!query) {
-      query = extractHrefFromWindow();
+      query = await extractHrefFromWindow();
     }
-    query = processQuery(query);
+    query = await processQuery(query);
 
     return query;
   }
@@ -71,25 +72,17 @@ export default function useLinkToArchive(font: Font) {
     return params.get(paramName) || "";
   }
 
-  function extractHrefFromWindow() {
-    const href: string = decodeURIComponent(window.location.href);
-    return href.includes("search.app")
-      ? extractLinkFromSearchApp(href)
-      : window.location.pathname.slice(1);
+  async function extractHrefFromWindow() {
+    return window.location.pathname.slice(1);
   }
 
-  function extractLinkFromSearchApp(str: string) {
-    const linkMatch = str.match(/link=([^&]+)/);
-    return linkMatch ? linkMatch[1] : str;
-  }
-
-  function processQuery(query: string) {
+  async function processQuery(query: string) {
     if (query.includes("http")) {
       query = query.substring(query.indexOf("http"));
     }
 
     if (query.includes("search.app")) {
-      query = extractLinkFromSearchApp(query);
+      query = await getUrlFromSearchApp(query);
     }
 
     if (query.includes("?")) {

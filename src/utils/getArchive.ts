@@ -1,7 +1,6 @@
 import { parse } from "node-html-parser";
 import { notWorkingList } from "@/data/notWorkingList";
 import { trackEvent } from "@/hooks/useUmami";
-import { getUrlFromSearchApp } from "./getUrlFromSearchApp";
 
 export async function getArchive(query: string, archive: string) {
   function validURL(str: string) {
@@ -20,11 +19,6 @@ export async function getArchive(query: string, archive: string) {
   if (!query || !validURL(query)) {
     alert(`invalid query: ${query}`);
     return "";
-  }
-
-  if (query.includes("search.app")) {
-    // find out the final url
-    query = await getUrlFromSearchApp(query);
   }
 
   const website = query.split("/")[2];
