@@ -3,11 +3,10 @@ import { getArchive } from "@/utils/getArchive";
 import useLocalStorageState from "use-local-storage-state";
 import getArticle from "@/utils/getArticle";
 import { Font } from "@/types";
-import { getUrlFromSearchApp } from "@/utils/getUrlFromSearchApp";
+import { getProcessedQuery } from "@/utils/urlProcessor";
+import { ARCHIVE_CONFIG, APP_CONFIG } from "@/lib/constants";
 
-const BASE_URL = "https://archive.is/";
-
-export default function useLinkToArchive(font: Font) {
+function useLinkToArchive(font: Font) {
   const [query, setQuery] = useState("");
   const [isInstalled] = useLocalStorageState("isInstalled", {
     defaultValue: false,
@@ -21,12 +20,13 @@ export default function useLinkToArchive(font: Font) {
   const showAd = import.meta.env.VITE_SHOW_AD === "true";
 
   const timeBeforeRedirect = showAd
-    ? Number(import.meta.env.VITE_TIME_BEFORE_REDIRECT) || 500
+    ? Number(import.meta.env.VITE_TIME_BEFORE_REDIRECT) ||
+      APP_CONFIG.DEFAULT_TIME_BEFORE_REDIRECT
     : 0;
 
   useEffect(() => {
     async function fetchData() {
-      const encodedQuery = await getQuery();
+      const encodedQuery = await getProcessedQuery();
       const query = decodeURIComponent(encodedQuery);
 
       if (!query) {
@@ -34,18 +34,22 @@ export default function useLinkToArchive(font: Font) {
       }
 
       setQuery(query);
-      const link = await getArchive(query, BASE_URL);
+      const link = await getArchive(query, ARCHIVE_CONFIG.BASE_URL);
 
       if (link && link !== "No link found" && link !== "Not working") {
         setTimeout(() => {
           setArticleLink(link);
-          getArticle(link, BASE_URL, query, font).then((article) => {
-            setArticle(article);
-          });
+          getArticle(link, ARCHIVE_CONFIG.BASE_URL, query, font).then(
+            (article) => {
+              setArticle(article);
+            }
+          );
         }, timeBeforeRedirect);
       } else if (link === "No link found") {
         setTimeout(() => {
-          window.location.replace(`${BASE_URL}?run=1&url=${query}`);
+          window.location.replace(
+            `${ARCHIVE_CONFIG.BASE_URL}?run=1&url=${query}`
+          );
         }, timeBeforeRedirect);
       } else if (link === "Not working") {
         const domain = new URL(query).hostname;
@@ -54,43 +58,9 @@ export default function useLinkToArchive(font: Font) {
     }
 
     fetchData();
-  }, []);
-
-  async function getQuery() {
-    let query = getQueryParam("text");
-
-    if (!query) {
-      query = await extractHrefFromWindow();
-    }
-    query = await processQuery(query);
-
-    return query;
-  }
-
-  function getQueryParam(paramName: string) {
-    const params = new URLSearchParams(window.location.search);
-    return params.get(paramName) || "";
-  }
-
-  async function extractHrefFromWindow() {
-    return window.location.pathname.slice(1);
-  }
-
-  async function processQuery(query: string) {
-    if (query.includes("http")) {
-      query = query.substring(query.indexOf("http"));
-    }
-
-    if (query.includes("search.app")) {
-      query = await getUrlFromSearchApp(query);
-    }
-
-    if (query.includes("?")) {
-      query = query.substring(0, query.indexOf("?"));
-    }
-
-    return query;
-  }
+  }, [font, timeBeforeRedirect]);
 
   return { isInstalled, hasQuery, article, articleLink, error, query };
 }
+
+export default useLinkToArchive;
