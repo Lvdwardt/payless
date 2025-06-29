@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { getArchive } from "../utils/getArchive";
 import useLocalStorageState from "use-local-storage-state";
 import getArticle from "../utils/getArticle";
@@ -25,39 +25,60 @@ function useLinkToArchive(font: Font) {
     : 0;
 
   useEffect(() => {
-    async function fetchData() {
-      const encodedQuery = await getProcessedQuery();
-      const query = decodeURIComponent(encodedQuery);
+    startTransition(() => {
+      async function fetchData() {
+        try {
+          const encodedQuery = await getProcessedQuery();
+          const decodedQuery = decodeURIComponent(encodedQuery);
 
-      if (!query) {
-        return;
-      }
+          if (!decodedQuery) {
+            return;
+          }
 
-      setQuery(query);
-      const link = await getArchive(query, ARCHIVE_CONFIG.BASE_URL);
+          setQuery(decodedQuery);
+          setError("");
 
-      if (link && link !== "No link found" && link !== "Not working") {
-        setTimeout(() => {
-          setArticleLink(link);
-          getArticle(link, ARCHIVE_CONFIG.BASE_URL, query, font).then(
-            (article) => {
-              setArticle(article);
+          const link = await getArchive(decodedQuery, ARCHIVE_CONFIG.BASE_URL);
+
+          if (link && link !== "No link found" && link !== "Not working") {
+            setTimeout(() => {
+              setArticleLink(link);
+
+              getArticle(link, ARCHIVE_CONFIG.BASE_URL, decodedQuery, font)
+                .then((articleContent) => {
+                  if (articleContent) {
+                    setArticle(articleContent);
+                  } else {
+                    setError("Failed to load article content");
+                  }
+                })
+                .catch((articleError) => {
+                  console.error("Article fetch error:", articleError);
+                  setError("Failed to load article. Please try again.");
+                });
+            }, timeBeforeRedirect);
+          } else if (link === "No link found") {
+            setTimeout(() => {
+              window.location.replace(
+                `${ARCHIVE_CONFIG.BASE_URL}?run=1&url=${decodedQuery}`
+              );
+            }, timeBeforeRedirect);
+          } else if (link === "Not working") {
+            try {
+              const domain = new URL(decodedQuery).hostname;
+              setError(`I'm sorry, ${domain} is not working via this method.`);
+            } catch (urlError) {
+              setError(`Invalid URL format: ${decodedQuery}`);
             }
-          );
-        }, timeBeforeRedirect);
-      } else if (link === "No link found") {
-        setTimeout(() => {
-          window.location.replace(
-            `${ARCHIVE_CONFIG.BASE_URL}?run=1&url=${query}`
-          );
-        }, timeBeforeRedirect);
-      } else if (link === "Not working") {
-        const domain = new URL(query).hostname;
-        setError(`I'm sorry, ${domain} is not working via this method.`);
+          }
+        } catch (fetchError) {
+          console.error("Fetch data error:", fetchError);
+          setError("An unexpected error occurred. Please try again.");
+        }
       }
-    }
 
-    fetchData();
+      fetchData();
+    });
   }, [font, timeBeforeRedirect]);
 
   return { isInstalled, hasQuery, article, articleLink, error, query };
