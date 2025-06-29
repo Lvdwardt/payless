@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { APP_CONFIG } from "../lib/constants";
 
 export default function Timer() {
   const timeBeforeRedirect =
-    Number(import.meta.env.VITE_TIME_BEFORE_REDIRECT) || 500;
+    Number(import.meta.env.VITE_TIME_BEFORE_REDIRECT) ||
+    APP_CONFIG.DEFAULT_TIME_BEFORE_REDIRECT;
 
   const [millis, setMillis] = useState(timeBeforeRedirect);
 
