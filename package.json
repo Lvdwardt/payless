@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "bun@1.2.17",
   "scripts": {
     "partytown-prepare": "partytown copylib public/~partytown",
     "dev": "bun run partytown-prepare && vite",
