@@ -2,6 +2,7 @@ import { useEffect, useRef, startTransition } from "react";
 import { trackEvent } from "../hooks/useUmami";
 import { Font } from "@/types";
 import { APP_CONFIG } from "../lib/constants";
+import { useArchiveLinkInterception } from "../hooks/useArchiveLinkInterception";
 
 interface ArticleReaderProps {
   article: string;
@@ -18,32 +19,49 @@ export default function ArticleReader({
 }: ArticleReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Handle archive link interception
+  useArchiveLinkInterception({
+    contentRef,
+    isEnabled: !!article,
+  });
+
+  // Adjust zoom to fit content width
   useEffect(() => {
     if (!article || !contentRef.current) {
       return;
     }
 
-    startTransition(() => {
-      try {
-        const contentElement = contentRef.current;
-        if (!contentElement) return;
+    // Use a small delay to ensure content is fully rendered
+    const timeoutId = setTimeout(() => {
+      startTransition(() => {
+        try {
+          const contentElement = contentRef.current;
+          if (!contentElement) return;
 
-        const contentRect = contentElement.getBoundingClientRect();
-        const viewportWidth = document.documentElement.clientWidth;
+          const contentRect = contentElement.getBoundingClientRect();
+          const viewportWidth = document.documentElement.clientWidth;
 
-        if (viewportWidth > contentRect.width) {
-          return;
+          // Add some padding to ensure content isn't touching edges
+          const availableWidth = viewportWidth - 32; // 16px padding on each side
+
+          const html = document.querySelector("html");
+          if (html) {
+            if (contentRect.width > availableWidth) {
+              // Content is wider than available space, zoom out to fit
+              const zoomLevel = availableWidth / contentRect.width;
+              html.style.zoom = `${Math.max(0.45, Math.min(1, zoomLevel))}`;
+            } else {
+              // Content fits, ensure we're at 100% zoom
+              html.style.zoom = "1";
+            }
+          }
+        } catch (error) {
+          console.error("Error adjusting article zoom:", error);
         }
+      });
+    }, 100);
 
-        const html = document.querySelector("html");
-        if (html) {
-          const zoomLevel = viewportWidth / contentRect.width;
-          html.style.zoom = `${Math.max(0.5, Math.min(1, zoomLevel))}`;
-        }
-      } catch (error) {
-        console.error("Error adjusting article zoom:", error);
-      }
-    });
+    return () => clearTimeout(timeoutId);
   }, [article]);
 
   const handleFontScaleChange = (scale: number) => {
