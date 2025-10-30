@@ -8,7 +8,7 @@ export const COLORS = {
 } as const;
 
 export const ARCHIVE_CONFIG = {
-  BASE_URL: "https://archive.is/",
+  BASE_URL: "https://archive.today/",
   DEFAULT_TIMEOUT: 5000,
 } as const;
 
