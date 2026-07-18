@@ -3,19 +3,16 @@
 #
 # Coolify setup:
 #   1. New Resource → Docker Compose → point at this repo / this file.
-#   2. Set env: VNC_PASSWORD (required), PUBLIC_VNC_URL (see below).
-#   3. Map domains → ports:
-#        archive.cruisello.com      → 8788   (proxy API, the app talks here)
-#        archive-vnc.cruisello.com  → 6080   (noVNC solve UI)
-#      Coolify issues TLS for both.
-#   4. PUBLIC_VNC_URL should be the noVNC page, e.g.
-#        https://archive-vnc.cruisello.com/vnc.html?autoconnect=1&resize=remote&reconnect=1
-#      (append &password=... only if you accept it being visible in the URL;
-#       otherwise noVNC prompts for VNC_PASSWORD once.)
+#   2. Map ONE domain → port (Coolify issues TLS):
+#        archive.cruisello.com → 8788   (proxy API AND same-origin noVNC)
+#      There is NO separate VNC domain any more — do not map archive-vnc.*.
+#   3. No VNC env needed. VNC_INTERNAL=1 (below) makes the proxy serve + gate
+#      noVNC itself: no public VNC port, no password. The solve page embeds
+#      noVNC same-origin and the websocket only opens for a live solve token.
 #
 # After deploy: warm the jar once by opening an article in the app, tapping the
-# CAPTCHA prompt, and solving in the noVNC view. The qki cookie (~1h) then serves
-# every device until it goes cold.
+# CAPTCHA prompt, and solving in the embedded noVNC. The qki cookie (~1h) then
+# serves every device until it goes cold.
 
 services:
   archive-proxy:
@@ -26,18 +23,17 @@ services:
       - ARCHIVE_PROXY_PORT=8788
       - COOKIE_STORE_PATH=/data/cookies.json
       - CROSS_SITE=1
-      - VNC_URL=${PUBLIC_VNC_URL}
-      - VNC_PASSWORD=${VNC_PASSWORD}
+      # Serve + gate noVNC same-origin through the proxy (no public VNC door).
+      - VNC_INTERNAL=1
     volumes:
       - archive-data:/data
     # Chromium needs more than the default 64MB /dev/shm.
     shm_size: "1gb"
-    # expose, not ports: Coolify's proxy (Traefik) routes the domains to these
-    # container ports over its internal network + issues TLS. Publishing host
-    # ports would also open the unauthenticated API + noVNC on the raw VPS IP.
+    # expose, not ports: Coolify's Traefik routes the domain to 8788 over its
+    # internal network + issues TLS. noVNC (websockify) is loopback-only inside
+    # the container and reached only via the proxy's gated /vnc/* — never exposed.
     expose:
       - "8788"
-      - "6080"
     restart: unless-stopped
 
 volumes:
