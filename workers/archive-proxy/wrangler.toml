@@ -1,0 +1,9 @@
+name = "payless-archive"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "5ab45bd3b43840c1af1f5020eca10c50"
+preview_id = "22e2e667445f47faa29b43187b4d1640"
