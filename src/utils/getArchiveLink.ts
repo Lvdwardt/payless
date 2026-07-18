@@ -1,5 +1,5 @@
 import type { ArchiveLinkResult } from "@/types/article";
-import { trackEvent } from "@/hooks/useUmami";
+import { trackEvent, websiteFromUrl } from "@/hooks/useUmami";
 import {
   ARCHIVE_BASE,
   buildArchiveChallengeUrl,
@@ -24,7 +24,7 @@ export async function getArchiveLink(url: string): Promise<ArchiveLinkResult> {
     return { status: "error", message: "Invalid URL" };
   }
 
-  const domain = new URL(url).hostname.replace(/^www\./, "");
+  const domain = websiteFromUrl(url);
   if (
     NOT_WORKING_DOMAINS.some(
       (blocked) => domain === blocked || domain.endsWith(`.${blocked}`)
@@ -46,6 +46,7 @@ export async function getArchiveLink(url: string): Promise<ArchiveLinkResult> {
       return {
         status: "captcha",
         challengeUrl: page.challengeUrl || challengeUrl,
+        stage: "archive_link",
       };
     }
 
@@ -64,6 +65,12 @@ export async function getArchiveLink(url: string): Promise<ArchiveLinkResult> {
     return { status: "not_found" };
   } catch (error) {
     console.error("Error getting archive link:", error);
+    trackEvent("error", {
+      website: domain,
+      stage: "archive_link",
+      message:
+        error instanceof Error ? error.message : "Could not reach the archive",
+    });
     return {
       status: "error",
       message:

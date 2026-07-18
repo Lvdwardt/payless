@@ -5,7 +5,8 @@ import {
   ARCHIVE_BASE,
   buildArchiveChallengeUrl,
 } from "@/utils/archiveDetect";
-import type { ArticleState } from "@/types/article";
+import { trackEvent, websiteFromUrl } from "@/hooks/useUmami";
+import type { ArticleState, CaptchaStage } from "@/types/article";
 import type { Font } from "@/types/font";
 
 const RETRY_INTERVAL_MS = 4000;
@@ -19,6 +20,7 @@ async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
     return {
       status: "captcha",
       challengeUrl: archiveLink.challengeUrl,
+      stage: archiveLink.stage,
     };
   }
 
@@ -41,6 +43,7 @@ async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
     return {
       status: "captcha",
       challengeUrl: article.challengeUrl,
+      stage: article.stage,
     };
   }
 
@@ -55,6 +58,10 @@ async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
   };
 }
 
+function captchaVia(challengeUrl: string): "proxy" | "direct" {
+  return challengeUrl.includes("/solve") ? "proxy" : "direct";
+}
+
 /**
  * Fetch article content from archive, staying in-app through CAPTCHA challenges.
  */
@@ -64,6 +71,8 @@ export function useArticle(url: string, font: Font) {
   const inFlightRef = useRef(false);
   const stateRef = useRef(state);
   const captchaOpenedAtRef = useRef<number | null>(null);
+  const captchaSeenAtRef = useRef<number | null>(null);
+  const captchaStageRef = useRef<CaptchaStage | null>(null);
   const fontRef = useRef(font);
 
   useEffect(() => {
@@ -74,14 +83,69 @@ export function useArticle(url: string, font: Font) {
     fontRef.current = font;
   }, [font]);
 
+  function applyState(next: ArticleState) {
+    const prev = stateRef.current;
+    const domain = url ? websiteFromUrl(url) : "unknown";
+
+    if (next.status === "captcha" && prev.status !== "captcha") {
+      captchaSeenAtRef.current = Date.now();
+      captchaStageRef.current = next.stage;
+      trackEvent("captcha hit", {
+        website: domain,
+        stage: next.stage,
+        via: captchaVia(next.challengeUrl),
+      });
+    }
+
+    // Fire even if we briefly went through `loading` (manual retry).
+    if (
+      captchaSeenAtRef.current !== null &&
+      (next.status === "ready" || next.status === "error")
+    ) {
+      const seenAt = captchaSeenAtRef.current;
+      const stage =
+        captchaStageRef.current ||
+        (prev.status === "captcha" ? prev.stage : undefined);
+      const via =
+        prev.status === "captcha"
+          ? captchaVia(prev.challengeUrl)
+          : undefined;
+      trackEvent(
+        next.status === "ready" ? "captcha cleared" : "captcha failed",
+        {
+          website: domain,
+          stage,
+          via,
+          ms: Date.now() - seenAt,
+          opened: captchaOpenedAtRef.current !== null,
+        }
+      );
+      captchaSeenAtRef.current = null;
+      captchaStageRef.current = null;
+    }
+
+    if (next.status === "ready") {
+      captchaWindowRef.current?.close();
+      captchaWindowRef.current = null;
+      captchaOpenedAtRef.current = null;
+    }
+
+    setState(next);
+  }
+
   useEffect(() => {
     if (!url) {
       setState({ status: "idle" });
+      captchaSeenAtRef.current = null;
+      captchaStageRef.current = null;
+      captchaOpenedAtRef.current = null;
       return;
     }
 
     let cancelled = false;
     captchaOpenedAtRef.current = null;
+    captchaSeenAtRef.current = null;
+    captchaStageRef.current = null;
 
     async function load() {
       if (inFlightRef.current) return;
@@ -91,12 +155,7 @@ export function useArticle(url: string, font: Font) {
       try {
         const next = await resolveArticle(url, fontRef.current);
         if (!cancelled) {
-          if (next.status === "ready") {
-            captchaWindowRef.current?.close();
-            captchaWindowRef.current = null;
-            captchaOpenedAtRef.current = null;
-          }
-          setState(next);
+          applyState(next);
         }
       } finally {
         inFlightRef.current = false;
@@ -108,6 +167,8 @@ export function useArticle(url: string, font: Font) {
     return () => {
       cancelled = true;
     };
+    // applyState closes over url; reload when url changes only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   // After CAPTCHA, archive often clears access for this device/IP — retry
@@ -131,13 +192,7 @@ export function useArticle(url: string, font: Font) {
           return;
         }
 
-        if (next.status === "ready") {
-          captchaWindowRef.current?.close();
-          captchaWindowRef.current = null;
-          captchaOpenedAtRef.current = null;
-        }
-
-        setState(next);
+        applyState(next);
       } finally {
         inFlightRef.current = false;
       }
@@ -173,12 +228,18 @@ export function useArticle(url: string, font: Font) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearTimeout(intervalId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status, url]);
 
   function openCaptcha() {
     if (state.status !== "captcha" || !url) return;
 
     captchaOpenedAtRef.current = Date.now();
+    trackEvent("captcha open", {
+      website: websiteFromUrl(url),
+      stage: state.stage,
+      via: captchaVia(state.challengeUrl),
+    });
     captchaWindowRef.current?.close();
     captchaWindowRef.current = window.open(
       state.challengeUrl || buildArchiveChallengeUrl(url),
@@ -188,6 +249,10 @@ export function useArticle(url: string, font: Font) {
 
   function openArchive() {
     if (!url) return;
+    trackEvent("captcha fallback", {
+      website: websiteFromUrl(url),
+      stage: state.status === "captcha" ? state.stage : undefined,
+    });
     window.open(
       `https://archive.ph/${url}`,
       "payless-archive-read",
@@ -198,17 +263,17 @@ export function useArticle(url: string, font: Font) {
   function retry() {
     if (!url || inFlightRef.current) return;
 
+    trackEvent("captcha retry", {
+      website: websiteFromUrl(url),
+      stage: state.status === "captcha" ? state.stage : undefined,
+    });
+
     void (async () => {
       inFlightRef.current = true;
       setState({ status: "loading" });
       try {
         const next = await resolveArticle(url, fontRef.current);
-        if (next.status === "ready") {
-          captchaWindowRef.current?.close();
-          captchaWindowRef.current = null;
-          captchaOpenedAtRef.current = null;
-        }
-        setState(next);
+        applyState(next);
       } finally {
         inFlightRef.current = false;
       }
