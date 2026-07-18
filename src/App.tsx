@@ -1,19 +1,13 @@
-import useLocalStorageState from "use-local-storage-state";
 import { IntroductionCard } from "./components/introductionCard";
 import { CaptchaGate } from "./components/captcha-gate";
 import { ArticleReader } from "./components/article-reader";
 import { useQuery } from "./hooks/useQuery";
 import { useArticle } from "./hooks/useArticle";
-import { PacmanLoader } from "react-spinners";
-import type { Font } from "./types/font";
+import { useReaderExperience } from "./hooks/useReaderExperience";
+import { CenteredPacmanLoader } from "./components/centered-pacman-loader";
 
 function App() {
-  const [font, setFont] = useLocalStorageState<Font>("font", {
-    defaultValue: {
-      scale: 1,
-      height: undefined,
-    },
-  });
+  const [experience, setExperience] = useReaderExperience();
 
   const {
     extractedUrl,
@@ -22,7 +16,9 @@ function App() {
     hasQuery,
   } = useQuery();
   const {
-    article,
+    mode,
+    articleHtml,
+    nativeArticle,
     articleLink,
     isLoading: isArticleLoading,
     captchaUrl,
@@ -30,16 +26,18 @@ function App() {
     openCaptcha,
     openArchive,
     retry,
-  } = useArticle(extractedUrl, font);
+  } = useArticle(extractedUrl, experience);
 
-  const pageTitle = article
+  const hasArticle = mode === "native" ? !!nativeArticle : !!articleHtml;
+
+  const pageTitle = hasArticle
     ? "PayLess - Article Reader"
     : "PayLess - Skip the Paywall";
-  const pageDescription = article
+  const pageDescription = hasArticle
     ? "Reading article with PayLess paywall bypass tool"
     : "The easiest way to skip the paywall and read articles for free";
 
-  if (article) {
+  if (hasArticle && mode) {
     return (
       <>
         <title>{pageTitle}</title>
@@ -50,10 +48,12 @@ function App() {
         <meta name="twitter:description" content={pageDescription} />
 
         <ArticleReader
-          article={article}
+          mode={mode}
+          articleHtml={articleHtml}
+          nativeArticle={nativeArticle}
           articleLink={articleLink}
-          font={font}
-          onFontChange={setFont}
+          experience={experience}
+          onExperienceChange={setExperience}
         />
       </>
     );
@@ -75,23 +75,13 @@ function App() {
           {!hasQuery && !queryError && (
             <IntroductionCard isLoading={isQueryLoading} />
           )}
-          {hasQuery && isQueryLoading && (
-            <PacmanLoader
-              color="var(--primary)"
-              className="mr-34 relative"
-            />
-          )}
+          {hasQuery && isQueryLoading && <CenteredPacmanLoader />}
           {queryError && !isQueryLoading && (
             <p className="max-w-md text-center text-sm text-muted-foreground">
               {queryError}
             </p>
           )}
-          {extractedUrl && isArticleLoading && (
-            <PacmanLoader
-              color="var(--primary)"
-              className="mr-34 relative"
-            />
-          )}
+          {extractedUrl && isArticleLoading && <CenteredPacmanLoader />}
           {extractedUrl && captchaUrl && !isArticleLoading && (
             <CaptchaGate
               onOpenCaptcha={openCaptcha}

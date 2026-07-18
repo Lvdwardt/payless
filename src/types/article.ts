@@ -12,14 +12,36 @@ export type ArchiveLinkResult =
   | { status: "not_found" }
   | { status: "error"; message: string };
 
+export type NativeArticleImage = {
+  src: string;
+  alt?: string;
+};
+
+export type NativeArticle = {
+  title: string;
+  byline?: string;
+  content: string;
+  textContent: string;
+  length: number;
+  siteName?: string;
+  images: NativeArticleImage[];
+};
+
 export type ArticleResult =
-  | { status: "ok"; html: string }
+  | { status: "ok"; mode: "legacy"; html: string }
+  | { status: "ok"; mode: "native"; article: NativeArticle }
   | CaptchaChallenge
   | { status: "error"; message: string };
 
 export type ArticleState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; html: string; archiveLink: string }
+  | { status: "ready"; mode: "legacy"; html: string; archiveLink: string }
+  | {
+      status: "ready";
+      mode: "native";
+      article: NativeArticle;
+      archiveLink: string;
+    }
   | { status: "captcha"; challengeUrl: string; stage: CaptchaStage }
   | { status: "error"; message: string };
