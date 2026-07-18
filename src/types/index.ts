@@ -12,3 +12,5 @@ export type {
   ArticleResult,
   ArticleState,
 } from "./article";
+
+export type { Font } from "./font";

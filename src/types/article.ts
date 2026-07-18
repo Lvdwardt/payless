@@ -17,6 +17,6 @@ export type ArticleResult =
 export type ArticleState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; html: string }
+  | { status: "ready"; html: string; archiveLink: string }
   | { status: "captcha"; challengeUrl: string }
   | { status: "error"; message: string };

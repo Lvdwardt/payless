@@ -6,12 +6,13 @@ import {
   buildArchiveChallengeUrl,
 } from "@/utils/archiveDetect";
 import type { ArticleState } from "@/types/article";
+import type { Font } from "@/types/font";
 
 const RETRY_INTERVAL_MS = 4000;
 const FAST_RETRY_INTERVAL_MS = 2000;
 const FAST_RETRY_WINDOW_MS = 90_000;
 
-async function resolveArticle(url: string): Promise<ArticleState> {
+async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
   const archiveLink = await getArchiveLink(url);
 
   if (archiveLink.status === "captcha") {
@@ -29,7 +30,12 @@ async function resolveArticle(url: string): Promise<ArticleState> {
     return { status: "error", message: "No archive link found" };
   }
 
-  const article = await getArticle(archiveLink.link, ARCHIVE_BASE, url);
+  const article = await getArticle(
+    archiveLink.link,
+    ARCHIVE_BASE,
+    url,
+    font
+  );
 
   if (article.status === "captcha") {
     return {
@@ -42,20 +48,31 @@ async function resolveArticle(url: string): Promise<ArticleState> {
     return { status: "error", message: article.message };
   }
 
-  return { status: "ready", html: article.html };
+  return {
+    status: "ready",
+    html: article.html,
+    archiveLink: archiveLink.link,
+  };
 }
 
 /**
  * Fetch article content from archive, staying in-app through CAPTCHA challenges.
  */
-export function useArticle(url: string) {
+export function useArticle(url: string, font: Font) {
   const [state, setState] = useState<ArticleState>({ status: "idle" });
   const captchaWindowRef = useRef<Window | null>(null);
   const inFlightRef = useRef(false);
   const stateRef = useRef(state);
   const captchaOpenedAtRef = useRef<number | null>(null);
+  const fontRef = useRef(font);
 
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    fontRef.current = font;
+  }, [font]);
 
   useEffect(() => {
     if (!url) {
@@ -72,7 +89,7 @@ export function useArticle(url: string) {
       setState({ status: "loading" });
 
       try {
-        const next = await resolveArticle(url);
+        const next = await resolveArticle(url, fontRef.current);
         if (!cancelled) {
           if (next.status === "ready") {
             captchaWindowRef.current?.close();
@@ -107,7 +124,7 @@ export function useArticle(url: string) {
 
       inFlightRef.current = true;
       try {
-        const next = await resolveArticle(url);
+        const next = await resolveArticle(url, fontRef.current);
         if (cancelled || stateRef.current.status !== "captcha") return;
 
         if (next.status === "captcha") {
@@ -185,7 +202,7 @@ export function useArticle(url: string) {
       inFlightRef.current = true;
       setState({ status: "loading" });
       try {
-        const next = await resolveArticle(url);
+        const next = await resolveArticle(url, fontRef.current);
         if (next.status === "ready") {
           captchaWindowRef.current?.close();
           captchaWindowRef.current = null;
@@ -202,6 +219,7 @@ export function useArticle(url: string) {
     state,
     isLoading: state.status === "loading",
     article: state.status === "ready" ? state.html : "",
+    articleLink: state.status === "ready" ? state.archiveLink : "",
     captchaUrl: state.status === "captcha" ? state.challengeUrl : null,
     error: state.status === "error" ? state.message : null,
     openCaptcha,
