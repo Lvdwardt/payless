@@ -243,9 +243,22 @@ export function useArticle(url: string, experience: ReaderExperience) {
         void silentRetry();
       }
     };
+    // iOS/Android often restore Payless from BFCache when leaving the solve
+    // tab — effects don't remount, so retry explicitly on pageshow.
+    const onPageShow = () => {
+      void silentRetry();
+    };
+    const onSolveMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string } | null;
+      if (data?.type === "payless-captcha-done") {
+        void silentRetry();
+      }
+    };
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("message", onSolveMessage);
 
     const tick = () => {
       const openedAt = captchaOpenedAtRef.current;
@@ -263,6 +276,8 @@ export function useArticle(url: string, experience: ReaderExperience) {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("message", onSolveMessage);
       window.clearTimeout(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
