@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, Share, Smartphone } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
-import { PacmanLoader } from "react-spinners";
+import { CenteredPacmanLoader } from "@/components/centered-pacman-loader";
 
 export function IntroductionCard({
   isLoading: isDataLoading = false,
@@ -26,7 +26,7 @@ export function IntroductionCard({
   } = usePWAInstall();
 
   if (isLoading || isDataLoading) {
-    return <PacmanLoader color="var(--primary)" className="mr-14" />;
+    return <CenteredPacmanLoader />;
   }
 
   return (

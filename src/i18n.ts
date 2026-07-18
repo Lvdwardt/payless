@@ -48,6 +48,14 @@ const resources = {
       "captcha.readOnArchive": "Read on archive.ph instead",
       "captcha.hint":
         "Solve CAPTCHA opens a secure Live View to unlock the cleaned article here. “Read on archive.ph instead” opens the archive itself.",
+
+      // Reader experience toggle
+      "reader.legacy": "Classic",
+      "reader.native": "Native",
+      "reader.experienceToggleLabel": "Reader mode",
+      "reader.nativeFallbackNote":
+        "This site isn't available in Native mode yet, so we're showing the Classic reader instead.",
+      "reader.bylinePrefix": "By",
     },
   },
   nl: {
@@ -94,6 +102,14 @@ const resources = {
       "captcha.readOnArchive": "Lees in plaats daarvan op archive.ph",
       "captcha.hint":
         "CAPTCHA oplossen opent een beveiligde Live View om hier het schone artikel te ontgrendelen. “Lees in plaats daarvan op archive.ph” opent het archief zelf.",
+
+      // Reader experience toggle
+      "reader.legacy": "Klassiek",
+      "reader.native": "Native",
+      "reader.experienceToggleLabel": "Leesmodus",
+      "reader.nativeFallbackNote":
+        "Deze site is nog niet beschikbaar in Native-modus, dus we tonen de klassieke lezer.",
+      "reader.bylinePrefix": "Door",
     },
   },
 };
