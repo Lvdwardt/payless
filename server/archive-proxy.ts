@@ -84,11 +84,14 @@ const server = Bun.serve({
         return handleChallenge(request);
       }
       if (url.pathname === "/health") {
-        return Response.json({
-          ok: true,
-          cookies: Object.keys(archiveCookies).length,
-          warm: Boolean(archiveCookies.qki),
-        });
+        return cors(
+          Response.json({
+            ok: true,
+            cookies: Object.keys(archiveCookies).length,
+            warm: Boolean(archiveCookies.qki),
+          }),
+          request
+        );
       }
       return cors(Response.json({ error: "Not found" }, { status: 404 }), request);
     } catch (error) {
