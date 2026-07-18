@@ -11,7 +11,9 @@
  *    persisted to disk so it survives restarts.
  * 2. Opens a real Chromium page when a CAPTCHA is hit. Locally that window is on
  *    your screen; on the VPS it runs under Xvfb and you solve it through noVNC.
- * 3. Captures the cleared cookies (`qki` + friends) into the shared jar.
+ * 3. Captures cleared archive cookies into the jar, re-fetches to verify the
+ *    CAPTCHA is actually gone, and never lets challenge Set-Cookie clobber a
+ *    good jar (archive also sets `qki` on 429s).
  * 4. Serves cleaned archive HTML back to the app.
  *
  * Egress note: archive.today 429s datacenter + commercial-VPN IPs. The cleared
@@ -59,6 +61,21 @@ const CROSS_SITE =
 
 /** Single shared archive cookie jar — warmed by any solve, used by every fetch. */
 const archiveCookies: Record<string, string> = {};
+/**
+ * True only after a verified non-CAPTCHA archive response (or a solve that we
+ * re-fetched successfully). Presence of `qki` alone is NOT warm — archive sets
+ * `qki` on 429s before the challenge is cleared.
+ */
+let jarCleared = false;
+
+/** Archive cookie domains to seed into Playwright (fetch ignores domain). */
+const ARCHIVE_COOKIE_DOMAINS = [
+  ".archive.is",
+  ".archive.ph",
+  ".archive.today",
+  ".archive.vn",
+  ".archive.fo",
+] as const;
 
 const sessions = new Map<string, Session>();
 const activeSolves = new Set<string>();
@@ -153,7 +170,7 @@ const server = Bun.serve({
           Response.json({
             ok: true,
             cookies: Object.keys(archiveCookies).length,
-            warm: Boolean(archiveCookies.qki),
+            warm: jarCleared,
           }),
           request
         );
@@ -255,6 +272,16 @@ async function handleFetch(request: Request): Promise<Response> {
   const captcha = upstream.status === 429 || isCaptchaHtml(html);
   const origin = publicOrigin(request);
 
+  // Never let CAPTCHA/429 Set-Cookie clobber a cleared jar — archive sets `qki`
+  // on challenge responses too, which previously made `/health` look "warm"
+  // while every fetch still failed.
+  if (captcha) {
+    jarCleared = false;
+  } else {
+    persistCookies(upstream);
+    jarCleared = true;
+  }
+
   return withSidCookie(
     Response.json({
       status: upstream.status,
@@ -280,7 +307,7 @@ function handleSolveStatus(request: Request): Response {
     error: session.solveError || null,
     audioTs: audio?.ts || null,
     cookieCount: Object.keys(archiveCookies).length,
-    warm: Boolean(archiveCookies.qki),
+    warm: jarCleared,
   });
 }
 
@@ -340,12 +367,15 @@ async function handleSolve(request: Request): Promise<Response> {
   // Grant same-origin noVNC access for the life of this solve only.
   const vncToken = mintVncToken(sid);
 
-  return new Response(solveWaitingPage(sid, publicOrigin(request), vncToken), {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "set-cookie": sidCookieValue(sid),
-    },
-  });
+  return new Response(
+    solveWaitingPage(sid, publicOrigin(request), vncToken, target),
+    {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "set-cookie": sidCookieValue(sid),
+      },
+    }
+  );
 }
 
 async function runInteractiveSolve(sid: string, target: string) {
@@ -361,13 +391,17 @@ async function runInteractiveSolve(sid: string, target: string) {
       viewport: { width: 1280, height: 900 },
     });
 
-    // Seed cookies we already have so archive may skip the challenge entirely.
-    const existing = Object.entries(archiveCookies).map(([name, value]) => ({
-      name,
-      value,
-      domain: ".archive.ph",
-      path: "/",
-    }));
+    // Seed cookies onto every archive TLD — the app uses archive.is while older
+    // code only seeded .archive.ph, so Playwright often stayed cold despite a
+    // warm jar used by /fetch (which sends Cookie headers without domain checks).
+    const existing = Object.entries(archiveCookies).flatMap(([name, value]) =>
+      ARCHIVE_COOKIE_DOMAINS.map((domain) => ({
+        name,
+        value,
+        domain,
+        path: "/",
+      }))
+    );
     if (existing.length) {
       await context.addCookies(existing);
     }
@@ -440,16 +474,35 @@ async function runInteractiveSolve(sid: string, target: string) {
     // Give redirects a moment to settle after CAPTCHA.
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    let captured = 0;
+    // Only keep archive-host cookies. Older builds dumped Google/reCAPTCHA
+    // cookies into the shared jar and replayed them on every /fetch.
+    const next: Record<string, string> = {};
     for (const cookie of await context.cookies()) {
-      archiveCookies[cookie.name] = cookie.value;
-      captured += 1;
+      if (!isArchiveCookieDomain(cookie.domain)) continue;
+      next[cookie.name] = cookie.value;
     }
-    saveCookies();
+    if (!Object.keys(next).length) {
+      throw new Error("Solve finished but no archive cookies were captured");
+    }
+
+    const previous = { ...archiveCookies };
+    replaceJar(next);
+
+    // Prove the jar actually clears CAPTCHA via the same path /fetch uses —
+    // Playwright content markers alone have produced false "done" states.
+    const verified = await verifyJarCleared(target);
+    if (!verified) {
+      replaceJar(previous);
+      jarCleared = false;
+      throw new Error("Solve finished but archive still returns CAPTCHA");
+    }
+    jarCleared = true;
 
     session.solveStatus = "done";
     session.touchedAt = Date.now();
-    console.log(`[archive-proxy] Captured ${captured} cookies (jar=${Object.keys(archiveCookies).length}) for ${sid}`);
+    console.log(
+      `[archive-proxy] Captured ${Object.keys(next).length} archive cookies (jar=${Object.keys(archiveCookies).length}, verified) for ${sid}`
+    );
   } catch (error) {
     session.solveStatus = "error";
     session.solveError =
@@ -458,6 +511,31 @@ async function runInteractiveSolve(sid: string, target: string) {
   } finally {
     pendingAnswers.get(sid)?.(null);
     await context?.close().catch(() => undefined);
+  }
+}
+
+function isArchiveCookieDomain(domain: string): boolean {
+  const host = domain.replace(/^\./, "").toLowerCase();
+  return ARCHIVE_HOST_RE.test(host);
+}
+
+function replaceJar(next: Record<string, string>) {
+  for (const key of Object.keys(archiveCookies)) delete archiveCookies[key];
+  Object.assign(archiveCookies, next);
+  saveCookies();
+}
+
+/** Re-fetch `target` with the shared jar; true when CAPTCHA is gone. */
+async function verifyJarCleared(target: string): Promise<boolean> {
+  try {
+    const upstream = await proxyFollow(target, "GET", null, undefined, 5);
+    const html = await upstream.text();
+    const captcha = upstream.status === 429 || isCaptchaHtml(html);
+    if (!captcha) persistCookies(upstream);
+    return !captcha;
+  } catch (error) {
+    console.warn("[archive-proxy] jar verify failed", error);
+    return false;
   }
 }
 
@@ -651,7 +729,25 @@ async function getBrowser(): Promise<Browser> {
     : new Error("Could not launch a browser for CAPTCHA solving");
 }
 
-function solveWaitingPage(sid: string, origin: string, vncToken: string): string {
+function websiteFromArchiveTarget(target: string): string {
+  try {
+    const path = new URL(target).pathname;
+    const embedded = path.match(/https?:\/\/[^/]+/i)?.[0];
+    if (embedded) {
+      return new URL(embedded).hostname.replace(/^www\./, "");
+    }
+  } catch {
+    // fall through
+  }
+  return "unknown";
+}
+
+function solveWaitingPage(
+  sid: string,
+  origin: string,
+  vncToken: string,
+  target: string
+): string {
   // Tiered solve UI:
   //   auto         → the server drives reCAPTCHA + transcribes; just wait.
   //   manual-audio → play the captured clip, type what you hear, submit.
@@ -663,6 +759,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
   const novncIframe = vncSrc
     ? `<iframe class="vnc" id="vncframe" src="${vncSrc}" allow="clipboard-read; clipboard-write"></iframe>`
     : `<p class="hint">A Chrome window should open on this machine — solve it there.</p>`;
+  const website = websiteFromArchiveTarget(target);
 
   return `<!doctype html>
 <html lang="en">
@@ -670,6 +767,10 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Payless — unlocking article</title>
+  <script defer src="https://addless-share-worker.lvdw.workers.dev/script.js"
+    data-website-id="68fd502a-c9e4-4a63-a9a8-5ad1c14a0ac9"
+    data-host="https://addless-share-worker.lvdw.workers.dev"
+    data-auto-track="false"></script>
   <style>
     body { font-family: Georgia, serif; background: #f4f2ec; color: #2a2438; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
     header { padding: 1.25rem 1.25rem 0.5rem; text-align: center; }
@@ -720,20 +821,58 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
 
   <script>
     const sid = ${JSON.stringify(sid)};
+    const website = ${JSON.stringify(website)};
+    const startedAt = Date.now();
     const $ = (id) => document.getElementById(id);
     const statusEl = $('status');
     const secAuto = $('auto'), secManual = $('manual'), secVnc = $('novnc');
     const audioEl = $('capaudio'), manualMsg = $('manualMsg');
     const answerForm = $('answerForm'), answerInput = $('answerInput'), answerBtn = $('answerBtn');
-    let lastAudioTs = '', vncForced = false;
+    let lastAudioTs = '', vncForced = false, currentMode = 'auto', terminal = false;
+    const queue = [];
+
+    function track(name, data) {
+      const payload = Object.assign({ website: website }, data || {});
+      if (window.umami) {
+        try { window.umami.track(name, payload); } catch (e) {}
+        return;
+      }
+      queue.push([name, payload]);
+    }
+
+    (function waitUmami(attempts) {
+      if (window.umami) {
+        while (queue.length) {
+          const item = queue.shift();
+          try { window.umami.track(item[0], item[1]); } catch (e) {}
+        }
+        return;
+      }
+      if (attempts < 40) setTimeout(function () { waitUmami(attempts + 1); }, 250);
+    })(0);
+
+    function noteMode(mode) {
+      if (terminal || mode === currentMode) return;
+      currentMode = mode;
+      track('captcha solve mode', { mode: mode, forced: mode === 'novnc' && vncForced });
+    }
 
     function show(which) {
+      // UI sections: auto | manual | novnc  — analytics modes match server tiers.
+      const mode = which === 'manual' ? 'manual-audio' : which;
+      noteMode(mode);
       secAuto.classList.toggle('hidden', which !== 'auto');
       secManual.classList.toggle('hidden', which !== 'manual');
       secVnc.classList.toggle('hidden', which !== 'novnc');
     }
 
-    $('revealVnc').addEventListener('click', () => { vncForced = true; show('novnc'); });
+    track('captcha solve open', { mode: 'auto' });
+
+    $('revealVnc').addEventListener('click', () => {
+      vncForced = true;
+      track('captcha vnc forced', { from: currentMode });
+      show('novnc');
+    });
 
     answerForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -741,6 +880,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
       if (!answer) return;
       answerBtn.disabled = true;
       manualMsg.textContent = 'Checking…';
+      track('captcha audio submit', { mode: 'manual-audio' });
       try {
         const res = await fetch('/solve-answer?sid=' + encodeURIComponent(sid), {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -760,6 +900,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
         if (ts && ts !== lastAudioTs) {
           lastAudioTs = ts;
           audioEl.src = URL.createObjectURL(await res.blob());
+          track('captcha audio ready', { mode: 'manual-audio' });
         }
       } catch (e) {}
     }
@@ -769,13 +910,31 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
         const res = await fetch('/solve-status?sid=' + encodeURIComponent(sid));
         const data = await res.json();
         if (data.status === 'done') {
+          if (!terminal) {
+            terminal = true;
+            track('captcha solve done', { mode: currentMode, ms: Date.now() - startedAt, forced: vncForced });
+          }
           show('auto');
           statusEl.textContent = 'Done — return to Payless, the article is loading.';
           statusEl.className = 'status ok';
+          // Wake the Payless tab (popup) so it retries without a manual refresh.
+          try {
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage({ type: 'payless-captcha-done', sid: sid }, '*');
+            }
+          } catch (e) {}
           setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
           return;
         }
         if (data.status === 'error') {
+          if (!terminal) {
+            terminal = true;
+            track('captcha solve error', {
+              mode: currentMode,
+              ms: Date.now() - startedAt,
+              error: (data.error || 'unknown').slice(0, 120),
+            });
+          }
           statusEl.textContent = data.error || 'Something went wrong. Close this and retry.';
           statusEl.className = 'status err';
           return;
@@ -784,7 +943,9 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
         if (vncForced || data.mode === 'novnc') { show('novnc'); }
         else if (awaiting) { show('manual'); await loadAudioIfNew(); }
         else { show('auto'); }
-        statusEl.textContent = 'Working… (' + (data.cookieCount || 0) + ' cookies' + (data.warm ? ', warm' : '') + ')';
+        statusEl.textContent = data.warm
+          ? 'Working… session already cleared, confirming…'
+          : 'Working… (' + (data.cookieCount || 0) + ' cookies)';
       } catch (e) {
         statusEl.textContent = 'Still working…';
       }
@@ -823,12 +984,13 @@ async function handleChallenge(request: Request): Promise<Response> {
     body,
     request.headers
   );
-  persistCookies(upstream);
 
   const headers = new Headers();
   headers.append("set-cookie", sidCookieValue(sid));
 
   if (upstream.status >= 300 && upstream.status < 400) {
+    // Redirects are part of a cleared navigation — safe to keep their cookies.
+    persistCookies(upstream);
     const location = upstream.headers.get("location");
     if (location) {
       const absolute = new URL(location, targetUrl).toString();
@@ -847,10 +1009,18 @@ async function handleChallenge(request: Request): Promise<Response> {
 
   if (contentType.includes("text/html")) {
     let html = await upstream.text();
+    const captcha = upstream.status === 429 || isCaptchaHtml(html);
+    if (captcha) {
+      jarCleared = false;
+    } else {
+      persistCookies(upstream);
+      jarCleared = true;
+    }
     html = rewriteArchiveHtml(html, targetUrl.origin, pub, sid);
     return new Response(html, { status: upstream.status, headers });
   }
 
+  persistCookies(upstream);
   return new Response(await upstream.arrayBuffer(), {
     status: upstream.status,
     headers,
@@ -901,9 +1071,11 @@ async function proxyFollow(
 ): Promise<Response> {
   let current = target;
   let response = await proxyRequest(current, method, body, incomingHeaders);
-  persistCookies(response);
 
   while (redirectsLeft > 0 && response.status >= 300 && response.status < 400) {
+    // Keep cookies from redirect hops; the caller decides whether to persist
+    // the final response (skipped when that response is still a CAPTCHA).
+    persistCookies(response);
     const location = response.headers.get("location");
     if (!location) break;
     const next = new URL(location, current).toString();
@@ -911,7 +1083,6 @@ async function proxyFollow(
     current = next;
     redirectsLeft -= 1;
     response = await proxyRequest(current, "GET", null, incomingHeaders);
-    persistCookies(response);
   }
 
   return response;
@@ -1119,15 +1290,28 @@ function cors(response: Response, request: Request): Response {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Drop Google/reCAPTCHA cookies older builds accidentally stored in the jar. */
+const NON_ARCHIVE_COOKIE_NAME =
+  /^(NID|__Secure-|__Host-|1P_JAR|AEC|OGPC|APISID|SAPISID|HSID|SSID|SID$|SIDCC|ACCOUNT_CHOOSER|SEARCH_SAMESITE|OTZ|ANID|COMPASS|GAPS)/i;
+
 function loadCookies() {
   if (!COOKIE_STORE_PATH) return;
   try {
     const text = readFileSync(COOKIE_STORE_PATH, "utf8");
     const parsed = JSON.parse(text) as Record<string, string>;
+    let skipped = 0;
     for (const [name, value] of Object.entries(parsed)) {
-      if (typeof value === "string") archiveCookies[name] = value;
+      if (typeof value !== "string") continue;
+      if (NON_ARCHIVE_COOKIE_NAME.test(name)) {
+        skipped += 1;
+        continue;
+      }
+      archiveCookies[name] = value;
     }
-    console.log(`[archive-proxy] Loaded ${Object.keys(archiveCookies).length} cookies from ${COOKIE_STORE_PATH}`);
+    console.log(
+      `[archive-proxy] Loaded ${Object.keys(archiveCookies).length} cookies from ${COOKIE_STORE_PATH}` +
+        (skipped ? ` (dropped ${skipped} non-archive)` : "")
+    );
   } catch {
     // No file yet — start cold.
   }
