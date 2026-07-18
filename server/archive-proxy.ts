@@ -62,6 +62,12 @@ const sessions = new Map<string, Session>();
 const activeSolves = new Set<string>();
 /** token → grant. noVNC is only reachable while the bound solve is "solving". */
 const vncTokens = new Map<string, VncToken>();
+/**
+ * sid → latest reCAPTCHA audio clip captured during a solve. VNC carries no
+ * audio, so we grab the challenge mp3 off the wire and let the operator play it
+ * in their own browser instead.
+ */
+const solveAudio = new Map<string, { buf: Uint8Array; ts: number }>();
 let sharedBrowser: Browser | null = null;
 
 loadCookies();
@@ -74,6 +80,9 @@ function pruneSessions() {
   const now = Date.now();
   for (const [token, grant] of vncTokens) {
     if (grant.exp < now) vncTokens.delete(token);
+  }
+  for (const sid of solveAudio.keys()) {
+    if (!sessions.has(sid)) solveAudio.delete(sid);
   }
 }
 
@@ -117,6 +126,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/solve-status") {
         return cors(handleSolveStatus(request), request);
+      }
+      if (url.pathname === "/solve-audio") {
+        return handleSolveAudio(request);
       }
       if (url.pathname === "/challenge") {
         return handleChallenge(request);
@@ -254,6 +266,21 @@ function handleSolveStatus(request: Request): Response {
   });
 }
 
+function handleSolveAudio(request: Request): Response {
+  const sid = ensureSession(request);
+  const audio = solveAudio.get(sid);
+  if (!audio) {
+    return new Response("No audio captured yet", { status: 404 });
+  }
+  return new Response(audio.buf, {
+    headers: {
+      "content-type": "audio/mpeg",
+      "cache-control": "no-store",
+      "x-audio-ts": String(audio.ts),
+    },
+  });
+}
+
 async function handleSolve(request: Request): Promise<Response> {
   const sid = ensureSession(request);
   const target = new URL(request.url).searchParams.get("url");
@@ -308,6 +335,31 @@ async function runInteractiveSolve(sid: string, target: string) {
     }
 
     const page: Page = await context.newPage();
+
+    // reCAPTCHA on a flagged IP hands out brutal image challenges; the audio
+    // fallback is the way through. VNC has no audio channel, so capture the
+    // challenge mp3 as it's fetched and expose it via /solve-audio for the
+    // operator to play in their own browser.
+    page.on("response", (res) => {
+      const url = res.url();
+      const contentType = res.headers()["content-type"] || "";
+      if (
+        !contentType.startsWith("audio/") ||
+        !/recaptcha|gstatic|google/i.test(url)
+      ) {
+        return;
+      }
+      void res
+        .body()
+        .then((buf) => {
+          solveAudio.set(sid, { buf: new Uint8Array(buf), ts: Date.now() });
+          console.log(
+            `[archive-proxy] Captured reCAPTCHA audio (${buf.length}B) for ${sid}`
+          );
+        })
+        .catch(() => undefined);
+    });
+
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     console.log(`[archive-proxy] Solve window open for ${sid} → ${target}`);
@@ -431,6 +483,10 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
     h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
     .hint { margin: 0.5rem 1.25rem; color: #5b5368; font-size: 0.85rem; text-align: center; }
     .vnc { flex: 1; width: 100%; border: 0; min-height: 60vh; }
+    .audiobar { padding: 0.5rem 1.25rem; text-align: center; }
+    .audiobar audio { width: 100%; max-width: 420px; }
+    .audiobar .muted { margin: 0 0 0.4rem; color: #5b5368; font-size: 0.8rem; }
+    .audiobar .ready { color: #0f7a45; font-weight: bold; }
     .status { padding: 0.75rem 1.25rem 1rem; text-align: center; font-family: ui-monospace, monospace; font-size: 0.8rem; color: #5b5368; }
     .ok { color: #0f7a45; }
     .err { color: #a12626; }
@@ -439,10 +495,34 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
 <body>
   <header><h1>Complete the CAPTCHA</h1></header>
   ${solver}
+  <div class="audiobar" id="audiobar">
+    <p class="muted" id="audiomsg">Challenge too hard? In the reCAPTCHA tap the headphones (audio challenge) — the clip appears here to play, then type what you hear into the box above.</p>
+    <audio id="capaudio" controls preload="none"></audio>
+  </div>
   <p class="status" id="status">Waiting for CAPTCHA…</p>
   <script>
     const sid = ${JSON.stringify(sid)};
     const statusEl = document.getElementById('status');
+    const audioEl = document.getElementById('capaudio');
+    const audioMsg = document.getElementById('audiomsg');
+    let lastAudioTs = '';
+    async function pollAudio() {
+      try {
+        const res = await fetch('/solve-audio?sid=' + encodeURIComponent(sid), { cache: 'no-store' });
+        if (res.ok) {
+          const ts = res.headers.get('x-audio-ts') || '';
+          if (ts && ts !== lastAudioTs) {
+            lastAudioTs = ts;
+            const blob = await res.blob();
+            audioEl.src = URL.createObjectURL(blob);
+            audioMsg.textContent = '▶ Audio challenge ready — press play, then type what you hear.';
+            audioMsg.className = 'ready';
+          }
+        }
+      } catch (e) {}
+      setTimeout(pollAudio, 2000);
+    }
+    pollAudio();
     async function poll() {
       try {
         const res = await fetch('/solve-status?sid=' + encodeURIComponent(sid));
