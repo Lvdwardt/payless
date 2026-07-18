@@ -42,12 +42,12 @@ const resources = {
       // Captcha gate
       "captcha.title": "Quick check required",
       "captcha.description":
-        "The archive is asking for a CAPTCHA before we can show the cleaned article. Solve it to continue here, or read the archive page instead.",
+        "The archive is asking for a CAPTCHA before we can show the cleaned article. Solve it in the Live View window to continue here, or read the archive page instead.",
       "captcha.open": "Solve CAPTCHA",
       "captcha.retry": "I've finished — try again",
       "captcha.readOnArchive": "Read on archive.ph instead",
       "captcha.hint":
-        "Solve CAPTCHA unlocks the cleaned view here. “Read on archive.ph instead” opens the archive page instead.",
+        "Solve CAPTCHA opens a secure Live View to unlock the cleaned article here. “Read on archive.ph instead” opens the archive itself.",
     },
   },
   nl: {
@@ -88,12 +88,12 @@ const resources = {
       // Captcha gate
       "captcha.title": "Even een check",
       "captcha.description":
-        "Het archief vraagt om een CAPTCHA voordat we het schone artikel kunnen tonen. Los die op om hier verder te gaan, of lees de archiefpagina zelf.",
+        "Het archief vraagt om een CAPTCHA voordat we het schone artikel kunnen tonen. Los die op in het Live View-venster om hier verder te gaan, of lees de archiefpagina zelf.",
       "captcha.open": "CAPTCHA oplossen",
       "captcha.retry": "Klaar — probeer opnieuw",
       "captcha.readOnArchive": "Lees in plaats daarvan op archive.ph",
       "captcha.hint":
-        "CAPTCHA oplossen ontgrendelt de schone weergave hier. “Lees in plaats daarvan op archive.ph” opent het archief zelf.",
+        "CAPTCHA oplossen opent een beveiligde Live View om hier het schone artikel te ontgrendelen. “Lees in plaats daarvan op archive.ph” opent het archief zelf.",
     },
   },
 };

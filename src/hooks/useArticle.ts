@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { getArchiveLink } from "@/utils/getArchiveLink";
 import getArticle from "@/utils/getArticle";
-import { ARCHIVE_BASE } from "@/utils/archiveDetect";
+import {
+  ARCHIVE_BASE,
+  buildArchiveChallengeUrl,
+} from "@/utils/archiveDetect";
 import type { ArticleState } from "@/types/article";
 
 const RETRY_INTERVAL_MS = 4000;
@@ -156,12 +159,12 @@ export function useArticle(url: string) {
   }, [state.status, url]);
 
   function openCaptcha() {
-    if (state.status !== "captcha") return;
+    if (state.status !== "captcha" || !url) return;
 
     captchaOpenedAtRef.current = Date.now();
     captchaWindowRef.current?.close();
     captchaWindowRef.current = window.open(
-      state.challengeUrl,
+      state.challengeUrl || buildArchiveChallengeUrl(url),
       "payless-archive-captcha"
     );
   }

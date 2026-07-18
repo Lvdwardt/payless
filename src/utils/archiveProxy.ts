@@ -11,10 +11,7 @@ export type ProxyFetchResult = {
   challengeUrl: string;
 };
 
-/**
- * Local/dev proxy holds archive CAPTCHA cookies in a server-side jar.
- * Set via .env.development → http://localhost:8787
- */
+/** Local Bun proxy only. Set in `.env.development` via `scripts/dev.ts`. */
 const PROXY_BASE = (import.meta.env.VITE_ARCHIVE_PROXY_URL || "").replace(
   /\/$/,
   ""
