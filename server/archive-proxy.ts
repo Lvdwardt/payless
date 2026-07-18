@@ -28,23 +28,40 @@ type Session = {
   solveError?: string;
 };
 
+/** Short-lived grant that lets the solve page reach noVNC, bound to one solve. */
+type VncToken = { sid: string; exp: number };
+
+/** In-flight noVNC websocket proxy state (buffers client frames until upstream is up). */
+type VncWsData = {
+  upstream: WebSocket | null;
+  queue: (string | ArrayBufferLike | ArrayBufferView)[];
+};
+
 const PORT = Number(process.env.ARCHIVE_PROXY_PORT || 8788);
 const SID_COOKIE = "payless_archive_sid";
 const SESSION_TTL_MS = 60 * 60 * 1000;
+const VNC_TOKEN_TTL_MS = 10 * 60 * 1000;
 const ARCHIVE_HOST_RE = /^archive\.(is|ph|today|vn|fo)$/i;
 
-/** Public noVNC URL to embed in the solve page. Unset locally (window opens on screen). */
+/** Legacy external noVNC URL (kept for back-compat). Prefer VNC_INTERNAL. */
 const VNC_URL = process.env.VNC_URL || "";
+/** Container mode: serve + gate noVNC same-origin through this proxy (no public VNC door). */
+const VNC_INTERNAL = process.env.VNC_INTERNAL === "1";
+/** Loopback port where websockify (noVNC static + VNC bridge) listens inside the container. */
+const NOVNC_PORT = Number(process.env.NOVNC_PORT || 6080);
 /** Where to persist the shared cookie jar. Unset = in-memory only. */
 const COOKIE_STORE_PATH = process.env.COOKIE_STORE_PATH || "";
 /** true on the VPS/container: cross-site cookies + secure. */
-const CROSS_SITE = process.env.CROSS_SITE === "1" || Boolean(VNC_URL);
+const CROSS_SITE =
+  process.env.CROSS_SITE === "1" || VNC_INTERNAL || Boolean(VNC_URL);
 
 /** Single shared archive cookie jar — warmed by any solve, used by every fetch. */
 const archiveCookies: Record<string, string> = {};
 
 const sessions = new Map<string, Session>();
 const activeSolves = new Set<string>();
+/** token → grant. noVNC is only reachable while the bound solve is "solving". */
+const vncTokens = new Map<string, VncToken>();
 let sharedBrowser: Browser | null = null;
 
 loadCookies();
@@ -54,13 +71,17 @@ function pruneSessions() {
   for (const [sid, session] of sessions) {
     if (session.touchedAt < cutoff) sessions.delete(sid);
   }
+  const now = Date.now();
+  for (const [token, grant] of vncTokens) {
+    if (grant.exp < now) vncTokens.delete(token);
+  }
 }
 
 setInterval(pruneSessions, 60_000).unref?.();
 
 const server = Bun.serve({
   port: PORT,
-  async fetch(request) {
+  async fetch(request, server) {
     if (request.method === "OPTIONS") {
       return cors(new Response(null, { status: 204 }), request);
     }
@@ -68,6 +89,23 @@ const server = Bun.serve({
     const url = new URL(request.url);
 
     try {
+      // noVNC websocket bridge — gated by a live solve token, proxied to loopback.
+      if (url.pathname.startsWith("/vnc/websockify/")) {
+        const token = url.pathname.slice("/vnc/websockify/".length);
+        if (!isLiveVncToken(token)) {
+          return new Response("Forbidden", { status: 403 });
+        }
+        const upgraded = server.upgrade(request, {
+          data: { upstream: null, queue: [] } satisfies VncWsData,
+          headers: { "Sec-WebSocket-Protocol": "binary" },
+        });
+        if (upgraded) return undefined;
+        return new Response("Expected websocket", { status: 426 });
+      }
+      // noVNC static assets (vnc.html + core) — harmless without the gated WS.
+      if (url.pathname === "/vnc" || url.pathname.startsWith("/vnc/")) {
+        return handleVncStatic(request, url);
+      }
       if (url.pathname === "/session") {
         return cors(await createSession(request), request);
       }
@@ -105,9 +143,68 @@ const server = Bun.serve({
       );
     }
   },
+  // Pipe the gated client noVNC socket ↔ the loopback websockify bridge.
+  websocket: {
+    open(ws) {
+      const data = ws.data as VncWsData;
+      const upstream = new WebSocket(
+        `ws://127.0.0.1:${NOVNC_PORT}/websockify`,
+        ["binary"]
+      );
+      upstream.binaryType = "arraybuffer";
+      data.upstream = upstream;
+      upstream.onopen = () => {
+        for (const frame of data.queue) upstream.send(frame);
+        data.queue = [];
+      };
+      upstream.onmessage = (event) => {
+        try {
+          ws.send(event.data as string | ArrayBufferView | ArrayBufferLike);
+        } catch {
+          // client gone
+        }
+      };
+      upstream.onclose = () => {
+        try {
+          ws.close();
+        } catch {
+          // already closed
+        }
+      };
+      upstream.onerror = () => {
+        try {
+          ws.close();
+        } catch {
+          // already closed
+        }
+      };
+    },
+    message(ws, message) {
+      const data = ws.data as VncWsData;
+      const frame =
+        typeof message === "string" ? message : (message as Uint8Array);
+      if (data.upstream && data.upstream.readyState === WebSocket.OPEN) {
+        data.upstream.send(frame);
+      } else {
+        data.queue.push(frame);
+      }
+    },
+    close(ws) {
+      const data = ws.data as VncWsData;
+      try {
+        data.upstream?.close();
+      } catch {
+        // already closed
+      }
+    },
+  },
 });
 
-console.log(`[archive-proxy] listening on :${server.port} (cross-site=${CROSS_SITE}, vnc=${VNC_URL ? "on" : "off"})`);
+console.log(
+  `[archive-proxy] listening on :${server.port} (cross-site=${CROSS_SITE}, vnc=${
+    VNC_INTERNAL ? "internal" : VNC_URL ? "external" : "off"
+  })`
+);
 
 async function createSession(request: Request): Promise<Response> {
   const existing = getSid(request);
@@ -129,7 +226,7 @@ async function handleFetch(request: Request): Promise<Response> {
   const upstream = await proxyFollow(target, "GET", null, undefined, 5);
   const html = await upstream.text();
   const captcha = upstream.status === 429 || isCaptchaHtml(html);
-  const origin = new URL(request.url).origin;
+  const origin = publicOrigin(request);
 
   return withSidCookie(
     Response.json({
@@ -175,7 +272,10 @@ async function handleSolve(request: Request): Promise<Response> {
     });
   }
 
-  return new Response(solveWaitingPage(sid), {
+  // Grant same-origin noVNC access for the life of this solve only.
+  const vncToken = mintVncToken(sid);
+
+  return new Response(solveWaitingPage(sid, publicOrigin(request), vncToken), {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "set-cookie": sidCookieValue(sid),
@@ -298,14 +398,26 @@ async function getBrowser(): Promise<Browser> {
     : new Error("Could not launch a browser for CAPTCHA solving");
 }
 
-function solveWaitingPage(sid: string): string {
+function solveWaitingPage(sid: string, origin: string, vncToken: string): string {
   // On the VPS the solve happens in a browser you can't see — embed noVNC so you
   // can reach in and tap the checkbox from your phone. Locally the window just
   // opens on your screen.
-  const solver = VNC_URL
-    ? `<iframe class="vnc" src="${VNC_URL}" allow="clipboard-read; clipboard-write"></iframe>
-    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`
-    : `<p>A Chrome window should open on this machine. Solve the checkbox there.</p>`;
+  //
+  // VNC_INTERNAL: noVNC is served + gated same-origin by this proxy. The iframe
+  // points at our own /vnc/… and the websocket path carries a one-time token
+  // bound to this solve, so there is no public VNC door and no password prompt.
+  let solver: string;
+  if (VNC_INTERNAL) {
+    const wsPath = encodeURIComponent(`vnc/websockify/${vncToken}`);
+    const vncSrc = `${origin}/vnc/vnc.html?autoconnect=1&resize=remote&reconnect=1&path=${wsPath}`;
+    solver = `<iframe class="vnc" src="${vncSrc}" allow="clipboard-read; clipboard-write"></iframe>
+    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`;
+  } else if (VNC_URL) {
+    solver = `<iframe class="vnc" src="${VNC_URL}" allow="clipboard-read; clipboard-write"></iframe>
+    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`;
+  } else {
+    solver = `<p>A Chrome window should open on this machine. Solve the checkbox there.</p>`;
+  }
 
   return `<!doctype html>
 <html lang="en">
@@ -361,6 +473,7 @@ function solveWaitingPage(sid: string): string {
 async function handleChallenge(request: Request): Promise<Response> {
   const sid = ensureSession(request);
   const incoming = new URL(request.url);
+  const pub = publicOrigin(request);
   const targetParam = incoming.searchParams.get("url");
 
   if (!targetParam || !isAllowedArchiveUrl(targetParam)) {
@@ -396,7 +509,7 @@ async function handleChallenge(request: Request): Promise<Response> {
       headers.set(
         "location",
         isAllowedArchiveUrl(absolute)
-          ? `${incoming.origin}/challenge?url=${encodeURIComponent(absolute)}&sid=${encodeURIComponent(sid)}`
+          ? `${pub}/challenge?url=${encodeURIComponent(absolute)}&sid=${encodeURIComponent(sid)}`
           : location
       );
       return new Response(null, { status: upstream.status, headers });
@@ -408,7 +521,7 @@ async function handleChallenge(request: Request): Promise<Response> {
 
   if (contentType.includes("text/html")) {
     let html = await upstream.text();
-    html = rewriteArchiveHtml(html, targetUrl.origin, incoming.origin, sid);
+    html = rewriteArchiveHtml(html, targetUrl.origin, pub, sid);
     return new Response(html, { status: upstream.status, headers });
   }
 
@@ -609,6 +722,53 @@ function persistCookies(response: Response) {
     }
   }
   if (changed) saveCookies();
+}
+
+/**
+ * Public-facing origin of a request. Behind Coolify/Traefik, TLS terminates at
+ * the proxy and Bun sees plain http, so `new URL(request.url).origin` yields
+ * http:// — which becomes mixed content when embedded from the https app. Trust
+ * the forwarded headers the reverse proxy sets.
+ */
+function publicOrigin(request: Request): string {
+  const url = new URL(request.url);
+  const proto =
+    request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+    url.protocol.replace(":", "");
+  const host =
+    request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+    request.headers.get("host") ||
+    url.host;
+  return `${proto}://${host}`;
+}
+
+/** Mint a one-time noVNC grant bound to a solve session. */
+function mintVncToken(sid: string): string {
+  const token = crypto.randomUUID();
+  vncTokens.set(token, { sid, exp: Date.now() + VNC_TOKEN_TTL_MS });
+  return token;
+}
+
+/** A noVNC token is live only while unexpired AND its solve is still running. */
+function isLiveVncToken(token: string): boolean {
+  const grant = vncTokens.get(token);
+  if (!grant || grant.exp < Date.now()) return false;
+  return sessions.get(grant.sid)?.solveStatus === "solving";
+}
+
+/** Reverse-proxy noVNC static assets from the loopback websockify server. */
+async function handleVncStatic(request: Request, url: URL): Promise<Response> {
+  const rest =
+    url.pathname === "/vnc" || url.pathname === "/vnc/"
+      ? "vnc.html"
+      : url.pathname.slice("/vnc/".length);
+  const upstream = await fetch(
+    `http://127.0.0.1:${NOVNC_PORT}/${rest}${url.search}`
+  );
+  const headers = new Headers();
+  const contentType = upstream.headers.get("content-type");
+  if (contentType) headers.set("content-type", contentType);
+  return new Response(upstream.body, { status: upstream.status, headers });
 }
 
 function cors(response: Response, request: Request): Response {
