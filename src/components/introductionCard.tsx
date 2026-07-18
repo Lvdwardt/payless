@@ -26,7 +26,7 @@ export function IntroductionCard({
   } = usePWAInstall();
 
   if (isLoading || isDataLoading) {
-    return <PacmanLoader color="var(--foreground)" className="mr-14" />;
+    return <PacmanLoader color="var(--primary)" className="mr-14" />;
   }
 
   return (
