@@ -12,18 +12,13 @@ until xdpyinfo -display :99 >/dev/null 2>&1; do sleep 0.2; done
 # Minimal window manager so the Chromium window is placed + focusable.
 fluxbox >/dev/null 2>&1 &
 
-# Screen → VNC on :5900. Password strongly recommended: without VNC_PASSWORD,
-# anyone who reaches the noVNC URL can drive this browser.
-mkdir -p /root/.vnc
-if [ -n "${VNC_PASSWORD:-}" ]; then
-  x11vnc -storepasswd "$VNC_PASSWORD" /root/.vnc/passwd >/dev/null 2>&1
-  x11vnc -display :99 -forever -shared -rfbauth /root/.vnc/passwd -rfbport 5900 -bg -o /var/log/x11vnc.log
-else
-  echo "[entrypoint] WARNING: VNC_PASSWORD unset — noVNC is unauthenticated." >&2
-  x11vnc -display :99 -forever -shared -nopw -rfbport 5900 -bg -o /var/log/x11vnc.log
-fi
+# Screen → VNC on loopback :5900 only. No VNC password: access is gated one layer
+# up by the proxy, which serves noVNC same-origin and only opens the websocket for
+# a live, app-initiated solve token. x11vnc + websockify never bind a public port.
+x11vnc -display :99 -forever -shared -nopw -localhost -rfbport 5900 -bg -o /var/log/x11vnc.log
 
-# VNC → browser (noVNC static + websocket bridge) on :6080.
-websockify --web=/usr/share/novnc 6080 localhost:5900 &
+# noVNC static + VNC→websocket bridge, bound to loopback. The proxy reverse-proxies
+# /vnc/* to it; it is NOT exposed through Coolify/Traefik.
+websockify --web=/usr/share/novnc 127.0.0.1:6080 localhost:5900 &
 
 exec bun run server/archive-proxy.ts

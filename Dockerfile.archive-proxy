@@ -27,7 +27,8 @@ COPY server ./server
 COPY docker/archive-proxy-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# 8788 = proxy API, 6080 = noVNC solve UI.
-EXPOSE 8788 6080
+# 8788 = proxy API (also serves gated same-origin noVNC). noVNC's websockify runs
+# loopback-only inside the container, so nothing else is exposed.
+EXPOSE 8788
 
 ENTRYPOINT ["/entrypoint.sh"]
