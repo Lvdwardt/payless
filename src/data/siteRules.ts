@@ -1,4 +1,4 @@
-import type { MultipleSites, Site } from "@/types";
+import type { MultipleSites, Site } from "@/types/siteRules";
 import { singleSites } from "./sites/single";
 import { multipleSites } from "./sites/multiple";
 

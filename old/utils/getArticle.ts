@@ -1,57 +1,43 @@
 import DOMPurify from "isomorphic-dompurify";
 import parse from "node-html-parser";
 import { sites } from "@/data/siteRules";
+import { Font, Rules } from "@/types";
 import { allSitesRules } from "@/data/allSites";
-import { Rules, CheckRule } from "@/types/siteRules";
-import type { ArticleResult } from "@/types/article";
-import { fetchArchivePage } from "@/utils/archiveProxy";
 
 export default async function getArticle(
   link: string,
   baseURL: string,
-  originalLink: string
-): Promise<ArticleResult> {
+  originalLink: string,
+  font: Font
+) {
   baseURL = baseURL.replace(/\/$/, "");
   const site = new URL(originalLink).hostname;
 
-  let data: string;
-  try {
-    const page = await fetchArchivePage(link);
-    data = page.html;
-
-    if (page.captcha) {
-      return { status: "captcha", challengeUrl: page.challengeUrl || link };
-    }
-  } catch (error) {
-    console.error("Error fetching article:", error);
-    return {
-      status: "error",
-      message: "Could not load the archived article.",
-    };
-  }
-
+  const data = await fetch(link).then((res) => res.text());
   const root = parse(data);
+
   const content = root.querySelector("#CONTENT") as unknown as HTMLElement;
 
   if (!content) {
-    return {
-      status: "error",
-      message: "Archived article content was not found.",
-    };
+    window.location.replace(link);
+    return "";
   }
 
+  updateFontsizes(content, font);
+
+  //fix images
   fixImages(content, baseURL);
+
+  //all sites logic
   applyRules(allSitesRules, content);
 
+  //newspaper specific logic.
   if (site in sites) {
     const rules = sites[site];
     applyRules(rules, content);
   }
 
-  return {
-    status: "ok",
-    html: DOMPurify.sanitize(content.toString()),
-  };
+  return DOMPurify.sanitize(content.toString());
 }
 
 function applyRules(rules: Rules, content: HTMLElement) {
@@ -88,27 +74,64 @@ function applyRules(rules: Rules, content: HTMLElement) {
       replaceAllInStyles(content, rule.find, rule.replace);
     });
   }
-  if (rules.checkRules) {
-    rules.checkRules.forEach((rule) => {
-      applyCheckRule(content, rule);
-    });
-  }
 }
 
 function fixImages(content: HTMLElement, baseURL: string) {
   const images = content.querySelectorAll("img");
   images.forEach((image) => {
     const src = image.getAttribute("src");
+    // starts with /, so it's relative
     if (src && src.startsWith("/")) {
       image.setAttribute("src", `${baseURL}${src}`);
     }
+    // set opacity to 1, update the style, don't override the style
     image.setAttribute(
       "style",
       (image.getAttribute("style") || "") + "opacity: 1;"
     );
 
+    // if the alt text is an emoji, make it inline
     if (image.getAttribute("alt")?.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/)) {
       image.setAttribute("style", "width: 1em; height: 1em; display: inline");
+    }
+  });
+}
+function updateFontsizes(content: HTMLElement, font: Font) {
+  const elements = content.querySelectorAll("*");
+
+  elements.forEach((element) => {
+    const style = element.getAttribute("style");
+    if (!style) return;
+
+    let newStyle = style;
+    let updated = false;
+
+    if (font.height && style.includes("line-height:")) {
+      const lineHeight = style.match(/line-height: ?(\d+)px/);
+      if (lineHeight) {
+        const height = parseInt(lineHeight[1]);
+        newStyle = newStyle.replace(
+          lineHeight[0],
+          `line-height: ${height * font.height}px`
+        );
+        updated = true;
+      }
+    }
+
+    if (style.includes("font-size:")) {
+      const fontSize = style.match(/font-size: ?(\d+)px/);
+      if (fontSize) {
+        const size = parseInt(fontSize[1]);
+        newStyle = newStyle.replace(
+          fontSize[0],
+          `font-size: ${size * font.scale}px`
+        );
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      element.setAttribute("style", newStyle);
     }
   });
 }
@@ -162,37 +185,4 @@ function replaceAllInStyles(
       element.setAttribute("style", newStyle);
     }
   });
-}
-
-function applyCheckRule(content: HTMLElement, rule: CheckRule) {
-  const { condition, removeSelector } = rule;
-  const checkElements = content.querySelectorAll(condition.selector);
-  let conditionMet = false;
-
-  checkElements.forEach((element) => {
-    if (conditionMet) return;
-
-    if (condition.type === "content") {
-      const elementContent = element.textContent?.trim() || "";
-      if (condition.contains !== false) {
-        conditionMet = elementContent.includes(condition.value);
-      } else {
-        conditionMet = elementContent === condition.value;
-      }
-    } else if (condition.type === "style") {
-      const elementStyle = element.getAttribute("style") || "";
-      if (condition.contains !== false) {
-        conditionMet = elementStyle.includes(condition.value);
-      } else {
-        conditionMet = elementStyle === condition.value;
-      }
-    }
-  });
-
-  if (conditionMet) {
-    const elementsToRemove = content.querySelectorAll(removeSelector);
-    elementsToRemove.forEach((element) => {
-      element.remove();
-    });
-  }
 }
