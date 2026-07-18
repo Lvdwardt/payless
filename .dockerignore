@@ -1,0 +1,8 @@
+node_modules
+dist
+old
+.git
+.env*
+*.log
+.archive-cookies.json
+.DS_Store

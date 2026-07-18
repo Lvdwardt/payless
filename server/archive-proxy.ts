@@ -1,18 +1,28 @@
 /**
- * Local archive.is session proxy.
+ * Archive.is session proxy.
  *
- * Archive CAPTCHA cookies are domain-bound and can't be used by the Vite app's
- * cross-origin fetch. This proxy:
- * 1. Fetches archive HTML with a server-side cookie jar
- * 2. Opens a real Chrome window via Playwright when CAPTCHA is needed
- * 3. Copies cookies from that browser into the jar after you solve it
- * 4. Serves HTML back to Payless for cleaning
+ * Archive CAPTCHA cookies are domain-bound and can't be used by the app's
+ * cross-origin fetch (archive sends `Access-Control-Allow-Origin: *`, so the
+ * browser refuses to carry credentials). This proxy fetches archive HTML with a
+ * server-side cookie jar instead, and cleans past the CAPTCHA by driving a real
+ * Chromium once:
+ *
+ * 1. Keeps a SINGLE shared archive cookie jar (solve once → every device warm),
+ *    persisted to disk so it survives restarts.
+ * 2. Opens a real Chromium page when a CAPTCHA is hit. Locally that window is on
+ *    your screen; on the VPS it runs under Xvfb and you solve it through noVNC.
+ * 3. Captures the cleared cookies (`qki` + friends) into the shared jar.
+ * 4. Serves cleaned archive HTML back to the app.
+ *
+ * Egress note: archive.today 429s datacenter + commercial-VPN IPs. The cleared
+ * cookie (`qki`, Max-Age 3600) is what buys a warm window on a flagged IP —
+ * re-solve when it goes cold.
  */
 
-import { chromium, type Browser } from "playwright-core";
+import { readFileSync } from "node:fs";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 
 type Session = {
-  cookies: Record<string, string>;
   touchedAt: number;
   solveStatus: "idle" | "solving" | "done" | "error";
   solveError?: string;
@@ -23,9 +33,21 @@ const SID_COOKIE = "payless_archive_sid";
 const SESSION_TTL_MS = 60 * 60 * 1000;
 const ARCHIVE_HOST_RE = /^archive\.(is|ph|today|vn|fo)$/i;
 
+/** Public noVNC URL to embed in the solve page. Unset locally (window opens on screen). */
+const VNC_URL = process.env.VNC_URL || "";
+/** Where to persist the shared cookie jar. Unset = in-memory only. */
+const COOKIE_STORE_PATH = process.env.COOKIE_STORE_PATH || "";
+/** true on the VPS/container: cross-site cookies + secure. */
+const CROSS_SITE = process.env.CROSS_SITE === "1" || Boolean(VNC_URL);
+
+/** Single shared archive cookie jar — warmed by any solve, used by every fetch. */
+const archiveCookies: Record<string, string> = {};
+
 const sessions = new Map<string, Session>();
 const activeSolves = new Set<string>();
 let sharedBrowser: Browser | null = null;
+
+loadCookies();
 
 function pruneSessions() {
   const cutoff = Date.now() - SESSION_TTL_MS;
@@ -62,7 +84,11 @@ const server = Bun.serve({
         return handleChallenge(request);
       }
       if (url.pathname === "/health") {
-        return Response.json({ ok: true });
+        return Response.json({
+          ok: true,
+          cookies: Object.keys(archiveCookies).length,
+          warm: Boolean(archiveCookies.qki),
+        });
       }
       return cors(Response.json({ error: "Not found" }, { status: 404 }), request);
     } catch (error) {
@@ -78,17 +104,13 @@ const server = Bun.serve({
   },
 });
 
-console.log(`[archive-proxy] http://localhost:${server.port}`);
+console.log(`[archive-proxy] listening on :${server.port} (cross-site=${CROSS_SITE}, vnc=${VNC_URL ? "on" : "off"})`);
 
 async function createSession(request: Request): Promise<Response> {
   const existing = getSid(request);
   const sid = existing || crypto.randomUUID();
   if (!sessions.has(sid)) {
-    sessions.set(sid, {
-      cookies: {},
-      touchedAt: Date.now(),
-      solveStatus: "idle",
-    });
+    sessions.set(sid, { touchedAt: Date.now(), solveStatus: "idle" });
   }
   return withSidCookie(Response.json({ sid }), sid);
 }
@@ -101,8 +123,7 @@ async function handleFetch(request: Request): Promise<Response> {
     return Response.json({ error: "Invalid archive url" }, { status: 400 });
   }
 
-  const session = getSession(sid);
-  const upstream = await proxyFollow(target, "GET", null, session, undefined, 5);
+  const upstream = await proxyFollow(target, "GET", null, undefined, 5);
   const html = await upstream.text();
   const captcha = upstream.status === 429 || isCaptchaHtml(html);
   const origin = new URL(request.url).origin;
@@ -128,7 +149,8 @@ function handleSolveStatus(request: Request): Response {
     sid,
     status: session.solveStatus,
     error: session.solveError || null,
-    cookieCount: Object.keys(session.cookies).length,
+    cookieCount: Object.keys(archiveCookies).length,
+    warm: Boolean(archiveCookies.qki),
   });
 }
 
@@ -160,7 +182,7 @@ async function handleSolve(request: Request): Promise<Response> {
 
 async function runInteractiveSolve(sid: string, target: string) {
   const session = getSession(sid);
-  let context = null;
+  let context: BrowserContext | null = null;
 
   try {
     const browser = await getBrowser();
@@ -168,20 +190,21 @@ async function runInteractiveSolve(sid: string, target: string) {
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
       locale: "en-US",
+      viewport: { width: 1280, height: 900 },
     });
 
-    // Seed any cookies we already have.
-    const existing = Object.entries(session.cookies).map(([name, value]) => ({
+    // Seed cookies we already have so archive may skip the challenge entirely.
+    const existing = Object.entries(archiveCookies).map(([name, value]) => ({
       name,
       value,
-      domain: ".archive.is",
+      domain: ".archive.ph",
       path: "/",
     }));
     if (existing.length) {
       await context.addCookies(existing);
     }
 
-    const page = await context.newPage();
+    const page: Page = await context.newPage();
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     console.log(`[archive-proxy] Solve window open for ${sid} → ${target}`);
@@ -208,28 +231,16 @@ async function runInteractiveSolve(sid: string, target: string) {
     // Give redirects a moment to settle after CAPTCHA.
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    const cookies = await context.cookies();
-    for (const cookie of cookies) {
-      if (
-        ARCHIVE_HOST_RE.test(cookie.domain.replace(/^\./, "")) ||
-        cookie.domain.endsWith("archive.is") ||
-        cookie.domain.endsWith("archive.ph") ||
-        cookie.domain.endsWith("archive.today")
-      ) {
-        session.cookies[cookie.name] = cookie.value;
-      }
+    let captured = 0;
+    for (const cookie of await context.cookies()) {
+      archiveCookies[cookie.name] = cookie.value;
+      captured += 1;
     }
-
-    // Also keep non-archive CF cookies from the archive response host.
-    for (const cookie of cookies) {
-      session.cookies[cookie.name] = cookie.value;
-    }
+    saveCookies();
 
     session.solveStatus = "done";
     session.touchedAt = Date.now();
-    console.log(
-      `[archive-proxy] Captured ${Object.keys(session.cookies).length} cookies for ${sid}`
-    );
+    console.log(`[archive-proxy] Captured ${captured} cookies (jar=${Object.keys(archiveCookies).length}) for ${sid}`);
   } catch (error) {
     session.solveStatus = "error";
     session.solveError =
@@ -243,18 +254,32 @@ async function runInteractiveSolve(sid: string, target: string) {
 async function getBrowser(): Promise<Browser> {
   if (sharedBrowser) return sharedBrowser;
 
-  const launchAttempts = [
-    { channel: "chrome" as const },
-    { channel: "msedge" as const },
-    { channel: "chromium" as const },
+  // Container-safe args (harmless on desktop). --no-sandbox is required when the
+  // proxy runs as root inside Docker.
+  const args = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--window-position=0,0",
+  ];
+
+  // Try branded channels first (local dev), then Playwright's bundled Chromium
+  // (present in the mcr.microsoft.com/playwright container image).
+  const attempts: Array<{ channel?: "chrome" | "msedge" }> = [
+    { channel: "chrome" },
+    { channel: "msedge" },
+    {},
   ];
 
   let lastError: unknown;
-  for (const opts of launchAttempts) {
+  for (const opts of attempts) {
     try {
       sharedBrowser = await chromium.launch({
         ...opts,
         headless: false,
+        executablePath: process.env.CHROME_PATH || undefined,
+        args,
       });
       sharedBrowser.on("disconnected", () => {
         sharedBrowser = null;
@@ -267,10 +292,18 @@ async function getBrowser(): Promise<Browser> {
 
   throw lastError instanceof Error
     ? lastError
-    : new Error("Could not launch Chrome/Edge for CAPTCHA solving");
+    : new Error("Could not launch a browser for CAPTCHA solving");
 }
 
 function solveWaitingPage(sid: string): string {
+  // On the VPS the solve happens in a browser you can't see — embed noVNC so you
+  // can reach in and tap the checkbox from your phone. Locally the window just
+  // opens on your screen.
+  const solver = VNC_URL
+    ? `<iframe class="vnc" src="${VNC_URL}" allow="clipboard-read; clipboard-write"></iframe>
+    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`
+    : `<p>A Chrome window should open on this machine. Solve the checkbox there.</p>`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -278,21 +311,20 @@ function solveWaitingPage(sid: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Payless CAPTCHA</title>
   <style>
-    body { font-family: Georgia, serif; background: #f4f2ec; color: #2a2438; margin: 0; min-height: 100vh; display: grid; place-items: center; }
-    main { max-width: 28rem; padding: 2rem; text-align: center; }
-    h1 { font-size: 1.75rem; margin: 0 0 0.75rem; }
-    p { line-height: 1.5; color: #5b5368; }
-    .status { margin-top: 1.5rem; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+    body { font-family: Georgia, serif; background: #f4f2ec; color: #2a2438; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    header { padding: 1rem 1.25rem 0.5rem; text-align: center; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+    .hint { margin: 0.5rem 1.25rem; color: #5b5368; font-size: 0.85rem; text-align: center; }
+    .vnc { flex: 1; width: 100%; border: 0; min-height: 60vh; }
+    .status { padding: 0.75rem 1.25rem 1rem; text-align: center; font-family: ui-monospace, monospace; font-size: 0.8rem; color: #5b5368; }
     .ok { color: #0f7a45; }
     .err { color: #a12626; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Complete the CAPTCHA</h1>
-    <p>A Chrome window should open on archive.is. Solve the checkbox there. This page will update when Payless has the session — then go back to the app.</p>
-    <p class="status" id="status">Waiting for CAPTCHA…</p>
-  </main>
+  <header><h1>Complete the CAPTCHA</h1></header>
+  ${solver}
+  <p class="status" id="status">Waiting for CAPTCHA…</p>
   <script>
     const sid = ${JSON.stringify(sid)};
     const statusEl = document.getElementById('status');
@@ -303,6 +335,7 @@ function solveWaitingPage(sid: string): string {
         if (data.status === 'done') {
           statusEl.textContent = 'CAPTCHA cleared. Return to Payless — the article should load automatically.';
           statusEl.className = 'status ok';
+          setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
           return;
         }
         if (data.status === 'error') {
@@ -310,7 +343,7 @@ function solveWaitingPage(sid: string): string {
           statusEl.className = 'status err';
           return;
         }
-        statusEl.textContent = 'Waiting for CAPTCHA… (' + (data.cookieCount || 0) + ' cookies)';
+        statusEl.textContent = 'Waiting for CAPTCHA… (' + (data.cookieCount || 0) + ' cookies' + (data.warm ? ', warm' : '') + ')';
       } catch (e) {
         statusEl.textContent = 'Still waiting…';
       }
@@ -337,7 +370,6 @@ async function handleChallenge(request: Request): Promise<Response> {
     targetUrl.searchParams.set(key, value);
   }
 
-  const session = getSession(sid);
   const body =
     request.method !== "GET" && request.method !== "HEAD"
       ? await request.arrayBuffer()
@@ -347,10 +379,9 @@ async function handleChallenge(request: Request): Promise<Response> {
     targetUrl.toString(),
     request.method,
     body,
-    session,
     request.headers
   );
-  persistCookies(session, upstream);
+  persistCookies(upstream);
 
   const headers = new Headers();
   headers.append("set-cookie", sidCookieValue(sid));
@@ -388,7 +419,6 @@ async function proxyRequest(
   target: string,
   method: string,
   body: ArrayBuffer | null,
-  session: Session,
   incomingHeaders?: Headers
 ): Promise<Response> {
   const headers = new Headers();
@@ -404,7 +434,7 @@ async function proxyRequest(
   );
   headers.set("accept-language", "en-US,en;q=0.9,nl;q=0.8");
 
-  const cookie = Object.entries(session.cookies)
+  const cookie = Object.entries(archiveCookies)
     .map(([name, value]) => `${name}=${value}`)
     .join("; ");
   if (cookie) headers.set("cookie", cookie);
@@ -424,19 +454,12 @@ async function proxyFollow(
   target: string,
   method: string,
   body: ArrayBuffer | null,
-  session: Session,
   incomingHeaders: Headers | undefined,
   redirectsLeft: number
 ): Promise<Response> {
   let current = target;
-  let response = await proxyRequest(
-    current,
-    method,
-    body,
-    session,
-    incomingHeaders
-  );
-  persistCookies(session, response);
+  let response = await proxyRequest(current, method, body, incomingHeaders);
+  persistCookies(response);
 
   while (redirectsLeft > 0 && response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
@@ -445,8 +468,8 @@ async function proxyFollow(
     if (!isAllowedArchiveUrl(next)) break;
     current = next;
     redirectsLeft -= 1;
-    response = await proxyRequest(current, "GET", null, session, incomingHeaders);
-    persistCookies(session, response);
+    response = await proxyRequest(current, "GET", null, incomingHeaders);
+    persistCookies(response);
   }
 
   return response;
@@ -513,23 +536,11 @@ function isAllowedArchiveUrl(value: string): boolean {
 function ensureSession(request: Request): string {
   const existing = getSid(request);
   if (existing) {
-    if (!sessions.has(existing)) {
-      sessions.set(existing, {
-        cookies: {},
-        touchedAt: Date.now(),
-        solveStatus: "idle",
-      });
-    } else {
-      sessions.get(existing)!.touchedAt = Date.now();
-    }
+    getSession(existing);
     return existing;
   }
   const sid = crypto.randomUUID();
-  sessions.set(sid, {
-    cookies: {},
-    touchedAt: Date.now(),
-    solveStatus: "idle",
-  });
+  sessions.set(sid, { touchedAt: Date.now(), solveStatus: "idle" });
   return sid;
 }
 
@@ -545,7 +556,7 @@ function getSid(request: Request): string | null {
 function getSession(sid: string): Session {
   let session = sessions.get(sid);
   if (!session) {
-    session = { cookies: {}, touchedAt: Date.now(), solveStatus: "idle" };
+    session = { touchedAt: Date.now(), solveStatus: "idle" };
     sessions.set(sid, session);
   }
   session.touchedAt = Date.now();
@@ -553,7 +564,10 @@ function getSession(sid: string): Session {
 }
 
 function sidCookieValue(sid: string): string {
-  return `${SID_COOKIE}=${sid}; Path=/; Max-Age=3600; HttpOnly; SameSite=Lax`;
+  // Cross-site (Vercel app → VPS proxy) needs SameSite=None; Secure or the
+  // browser drops it. Locally keep Lax so http://localhost works.
+  const suffix = CROSS_SITE ? "SameSite=None; Secure" : "SameSite=Lax";
+  return `${SID_COOKIE}=${sid}; Path=/; Max-Age=3600; HttpOnly; ${suffix}`;
 }
 
 function withSidCookie(response: Response, sid: string): Response {
@@ -566,7 +580,7 @@ function withSidCookie(response: Response, sid: string): Response {
   });
 }
 
-function persistCookies(session: Session, response: Response) {
+function persistCookies(response: Response) {
   const getSetCookie = (
     response.headers as Headers & { getSetCookie?: () => string[] }
   ).getSetCookie?.();
@@ -578,6 +592,7 @@ function persistCookies(session: Session, response: Response) {
         ? [response.headers.get("set-cookie") as string]
         : [];
 
+  let changed = false;
   for (const item of setCookies) {
     const pair = item.split(";")[0];
     const eq = pair.indexOf("=");
@@ -585,8 +600,12 @@ function persistCookies(session: Session, response: Response) {
     const name = pair.slice(0, eq).trim();
     const value = pair.slice(eq + 1).trim();
     if (!name) continue;
-    session.cookies[name] = value;
+    if (archiveCookies[name] !== value) {
+      archiveCookies[name] = value;
+      changed = true;
+    }
   }
+  if (changed) saveCookies();
 }
 
 function cors(response: Response, request: Request): Response {
@@ -605,4 +624,32 @@ function cors(response: Response, request: Request): Response {
     statusText: response.statusText,
     headers,
   });
+}
+
+// ── Cookie jar persistence ───────────────────────────────────────────────────
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function loadCookies() {
+  if (!COOKIE_STORE_PATH) return;
+  try {
+    const text = readFileSync(COOKIE_STORE_PATH, "utf8");
+    const parsed = JSON.parse(text) as Record<string, string>;
+    for (const [name, value] of Object.entries(parsed)) {
+      if (typeof value === "string") archiveCookies[name] = value;
+    }
+    console.log(`[archive-proxy] Loaded ${Object.keys(archiveCookies).length} cookies from ${COOKIE_STORE_PATH}`);
+  } catch {
+    // No file yet — start cold.
+  }
+}
+
+function saveCookies() {
+  if (!COOKIE_STORE_PATH) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    void Bun.write(COOKIE_STORE_PATH, JSON.stringify(archiveCookies, null, 2)).catch(
+      (error) => console.error("[archive-proxy] cookie save failed", error)
+    );
+  }, 1000);
 }
