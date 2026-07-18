@@ -77,7 +77,7 @@ function App() {
           )}
           {hasQuery && isQueryLoading && (
             <PacmanLoader
-              color="var(--accent-foreground)"
+              color="var(--primary)"
               className="mr-34 relative"
             />
           )}
@@ -88,7 +88,7 @@ function App() {
           )}
           {extractedUrl && isArticleLoading && (
             <PacmanLoader
-              color="var(--accent-foreground)"
+              color="var(--primary)"
               className="mr-34 relative"
             />
           )}
