@@ -4,15 +4,13 @@ import { sites } from "@/data/siteRules";
 import { allSitesRules } from "@/data/allSites";
 import { Rules, CheckRule } from "@/types/siteRules";
 import type { ArticleResult } from "@/types/article";
-import type { Font } from "@/types/font";
 import { trackEvent, websiteFromUrl } from "@/hooks/useUmami";
 import { fetchArchivePage } from "@/utils/archiveProxy";
 
 export default async function getArticle(
   link: string,
   baseURL: string,
-  originalLink: string,
-  font: Font = { scale: 1 }
+  originalLink: string
 ): Promise<ArticleResult> {
   baseURL = baseURL.replace(/\/$/, "");
   const site = new URL(originalLink).hostname;
@@ -56,7 +54,6 @@ export default async function getArticle(
     };
   }
 
-  updateFontsizes(content, font);
   fixImages(content, baseURL);
   applyRules(allSitesRules, content);
 
@@ -67,48 +64,9 @@ export default async function getArticle(
 
   return {
     status: "ok",
+    mode: "legacy",
     html: DOMPurify.sanitize(content.toString()),
   };
-}
-
-function updateFontsizes(content: HTMLElement, font: Font) {
-  const elements = content.querySelectorAll("*");
-
-  elements.forEach((element) => {
-    const style = element.getAttribute("style");
-    if (!style) return;
-
-    let newStyle = style;
-    let updated = false;
-
-    if (font.height && style.includes("line-height:")) {
-      const lineHeight = style.match(/line-height: ?(\d+)px/);
-      if (lineHeight) {
-        const height = parseInt(lineHeight[1]);
-        newStyle = newStyle.replace(
-          lineHeight[0],
-          `line-height: ${height * font.height}px`
-        );
-        updated = true;
-      }
-    }
-
-    if (style.includes("font-size:")) {
-      const fontSize = style.match(/font-size: ?(\d+)px/);
-      if (fontSize) {
-        const size = parseInt(fontSize[1]);
-        newStyle = newStyle.replace(
-          fontSize[0],
-          `font-size: ${size * font.scale}px`
-        );
-        updated = true;
-      }
-    }
-
-    if (updated) {
-      element.setAttribute("style", newStyle);
-    }
-  });
 }
 
 function applyRules(rules: Rules, content: HTMLElement) {

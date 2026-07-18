@@ -1,22 +1,89 @@
 import { useEffect, useRef, startTransition } from "react";
+import { useTranslation } from "react-i18next";
 import { trackEvent } from "@/hooks/useUmami";
 import { useArchiveLinkInterception } from "@/hooks/useArchiveLinkInterception";
-import { APP_CONFIG } from "@/lib/constants";
-import type { Font } from "@/types/font";
+import { Button } from "@/components/ui/button";
+import { NativeArticleReader } from "@/components/native-article-reader";
+import type { NativeArticle } from "@/types/article";
+import type { ReaderExperience } from "@/types/reader-experience";
 
 interface ArticleReaderProps {
-  article: string;
+  mode: "legacy" | "native";
+  articleHtml: string;
+  nativeArticle: NativeArticle | null;
   articleLink: string;
-  font: Font;
-  onFontChange: (font: Font) => void;
+  experience: ReaderExperience;
+  onExperienceChange: (experience: ReaderExperience) => void;
 }
 
 export function ArticleReader({
+  mode,
+  articleHtml,
+  nativeArticle,
+  articleLink,
+  experience,
+  onExperienceChange,
+}: ArticleReaderProps) {
+  const { t } = useTranslation();
+  const showNativeFallbackNote = experience === "native" && mode === "legacy";
+
+  return (
+    <>
+      <link rel="canonical" href={articleLink} />
+      <meta property="og:url" content={articleLink} />
+
+      <div className="mx-auto flex max-w-3xl justify-end px-4 pt-4">
+        <div
+          role="group"
+          aria-label={t("reader.experienceToggleLabel")}
+          className="inline-flex rounded-md border border-border p-0.5"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant={experience === "legacy" ? "default" : "ghost"}
+            onClick={() => onExperienceChange("legacy")}
+          >
+            {t("reader.legacy")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={experience === "native" ? "default" : "ghost"}
+            onClick={() => onExperienceChange("native")}
+          >
+            {t("reader.native")}
+          </Button>
+        </div>
+      </div>
+
+      {showNativeFallbackNote && (
+        <p className="mx-auto max-w-3xl px-4 pt-2 text-xs text-muted-foreground">
+          {t("reader.nativeFallbackNote")}
+        </p>
+      )}
+
+      {mode === "native" && nativeArticle ? (
+        <NativeArticleReader
+          article={nativeArticle}
+          articleLink={articleLink}
+        />
+      ) : (
+        <LegacyArticleReader article={articleHtml} articleLink={articleLink} />
+      )}
+    </>
+  );
+}
+
+interface LegacyArticleReaderProps {
+  article: string;
+  articleLink: string;
+}
+
+function LegacyArticleReader({
   article,
   articleLink,
-  font,
-  onFontChange,
-}: ArticleReaderProps) {
+}: LegacyArticleReaderProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useArchiveLinkInterception({
@@ -134,20 +201,6 @@ export function ArticleReader({
     };
   }, [article]);
 
-  const handleFontScaleChange = (scale: number) => {
-    startTransition(() => {
-      onFontChange({ ...font, scale });
-      window.location.reload();
-    });
-  };
-
-  const handleLineHeightChange = (height: number | undefined) => {
-    startTransition(() => {
-      onFontChange({ ...font, height });
-      window.location.reload();
-    });
-  };
-
   const handleViewArchiveClick = () => {
     try {
       trackEvent("go to article", {
@@ -159,75 +212,25 @@ export function ArticleReader({
   };
 
   return (
-    <>
-      <link rel="canonical" href={articleLink} />
-      <meta property="og:url" content={articleLink} />
-
-      <div className="w-fit mx-auto" ref={contentRef}>
-        <div className="flex justify-between items-center gap-4 p-4">
-          <a
-            href={articleLink}
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary hover:underline transition-colors"
-            onClick={handleViewArchiveClick}
-          >
-            View on archive.today
-          </a>
-
-          <div className="flex flex-col items-end gap-2 text-sm text-foreground">
-            <div className="flex items-center">
-              <label htmlFor="font-scale" className="mr-2">
-                Font size:
-              </label>
-              <select
-                id="font-scale"
-                className="rounded border border-border bg-background px-2 py-1 text-foreground"
-                value={font.scale}
-                onChange={(e) => handleFontScaleChange(Number(e.target.value))}
-                aria-label="Select font scale"
-              >
-                {APP_CONFIG.FONT_SCALE_OPTIONS.map((scale) => (
-                  <option key={scale} value={scale}>
-                    {scale}x
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center">
-              <label htmlFor="line-height" className="mr-2">
-                Line height:
-              </label>
-              <select
-                id="line-height"
-                className="rounded border border-border bg-background px-2 py-1 text-foreground"
-                value={font.height || ""}
-                onChange={(e) =>
-                  handleLineHeightChange(
-                    e.target.value ? Number(e.target.value) : undefined
-                  )
-                }
-                aria-label="Select line height"
-              >
-                <option value="">unset</option>
-                {APP_CONFIG.FONT_SCALE_OPTIONS.map((height) => (
-                  <option key={height} value={height}>
-                    {height}x
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <article
-          className="flex lg:justify-center revert-box-sizing"
-          dangerouslySetInnerHTML={{ __html: article }}
-          role="main"
-          aria-label="Article content"
-        />
+    <div className="w-fit mx-auto" ref={contentRef}>
+      <div className="flex justify-between items-center gap-4 p-4">
+        <a
+          href={articleLink}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary hover:underline transition-colors"
+          onClick={handleViewArchiveClick}
+        >
+          View on archive.today
+        </a>
       </div>
-    </>
+
+      <article
+        className="flex lg:justify-center revert-box-sizing"
+        dangerouslySetInnerHTML={{ __html: article }}
+        role="main"
+        aria-label="Article content"
+      />
+    </div>
   );
 }

@@ -10,8 +10,10 @@ export type {
   CaptchaStage,
   CaptchaChallenge,
   ArchiveLinkResult,
+  NativeArticleImage,
+  NativeArticle,
   ArticleResult,
   ArticleState,
 } from "./article";
 
-export type { Font } from "./font";
+export type { ReaderExperience } from "./reader-experience";
