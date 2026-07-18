@@ -1,7 +1,7 @@
 declare global {
   interface Window {
     umami?: {
-      track: (payload: UmamiPayload) => void;
+      track: (payload: UmamiPayload | string, data?: Record<string, unknown>) => void;
     };
   }
 }
@@ -36,6 +36,15 @@ function getDefaultProperties(): UmamiPayload {
     title: document.title,
     url: window.location.pathname,
   };
+}
+
+/** Hostname without leading www, for event properties. */
+export function websiteFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "unknown";
+  }
 }
 
 export function trackEvent(

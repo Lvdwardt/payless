@@ -340,12 +340,15 @@ async function handleSolve(request: Request): Promise<Response> {
   // Grant same-origin noVNC access for the life of this solve only.
   const vncToken = mintVncToken(sid);
 
-  return new Response(solveWaitingPage(sid, publicOrigin(request), vncToken), {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "set-cookie": sidCookieValue(sid),
-    },
-  });
+  return new Response(
+    solveWaitingPage(sid, publicOrigin(request), vncToken, target),
+    {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "set-cookie": sidCookieValue(sid),
+      },
+    }
+  );
 }
 
 async function runInteractiveSolve(sid: string, target: string) {
@@ -651,7 +654,25 @@ async function getBrowser(): Promise<Browser> {
     : new Error("Could not launch a browser for CAPTCHA solving");
 }
 
-function solveWaitingPage(sid: string, origin: string, vncToken: string): string {
+function websiteFromArchiveTarget(target: string): string {
+  try {
+    const path = new URL(target).pathname;
+    const embedded = path.match(/https?:\/\/[^/]+/i)?.[0];
+    if (embedded) {
+      return new URL(embedded).hostname.replace(/^www\./, "");
+    }
+  } catch {
+    // fall through
+  }
+  return "unknown";
+}
+
+function solveWaitingPage(
+  sid: string,
+  origin: string,
+  vncToken: string,
+  target: string
+): string {
   // Tiered solve UI:
   //   auto         → the server drives reCAPTCHA + transcribes; just wait.
   //   manual-audio → play the captured clip, type what you hear, submit.
@@ -663,6 +684,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
   const novncIframe = vncSrc
     ? `<iframe class="vnc" id="vncframe" src="${vncSrc}" allow="clipboard-read; clipboard-write"></iframe>`
     : `<p class="hint">A Chrome window should open on this machine — solve it there.</p>`;
+  const website = websiteFromArchiveTarget(target);
 
   return `<!doctype html>
 <html lang="en">
@@ -670,6 +692,10 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Payless — unlocking article</title>
+  <script defer src="https://addless-share-worker.lvdw.workers.dev/script.js"
+    data-website-id="68fd502a-c9e4-4a63-a9a8-5ad1c14a0ac9"
+    data-host="https://addless-share-worker.lvdw.workers.dev"
+    data-auto-track="false"></script>
   <style>
     body { font-family: Georgia, serif; background: #f4f2ec; color: #2a2438; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
     header { padding: 1.25rem 1.25rem 0.5rem; text-align: center; }
@@ -720,20 +746,58 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
 
   <script>
     const sid = ${JSON.stringify(sid)};
+    const website = ${JSON.stringify(website)};
+    const startedAt = Date.now();
     const $ = (id) => document.getElementById(id);
     const statusEl = $('status');
     const secAuto = $('auto'), secManual = $('manual'), secVnc = $('novnc');
     const audioEl = $('capaudio'), manualMsg = $('manualMsg');
     const answerForm = $('answerForm'), answerInput = $('answerInput'), answerBtn = $('answerBtn');
-    let lastAudioTs = '', vncForced = false;
+    let lastAudioTs = '', vncForced = false, currentMode = 'auto', terminal = false;
+    const queue = [];
+
+    function track(name, data) {
+      const payload = Object.assign({ website: website }, data || {});
+      if (window.umami) {
+        try { window.umami.track(name, payload); } catch (e) {}
+        return;
+      }
+      queue.push([name, payload]);
+    }
+
+    (function waitUmami(attempts) {
+      if (window.umami) {
+        while (queue.length) {
+          const item = queue.shift();
+          try { window.umami.track(item[0], item[1]); } catch (e) {}
+        }
+        return;
+      }
+      if (attempts < 40) setTimeout(function () { waitUmami(attempts + 1); }, 250);
+    })(0);
+
+    function noteMode(mode) {
+      if (terminal || mode === currentMode) return;
+      currentMode = mode;
+      track('captcha solve mode', { mode: mode, forced: mode === 'novnc' && vncForced });
+    }
 
     function show(which) {
+      // UI sections: auto | manual | novnc  — analytics modes match server tiers.
+      const mode = which === 'manual' ? 'manual-audio' : which;
+      noteMode(mode);
       secAuto.classList.toggle('hidden', which !== 'auto');
       secManual.classList.toggle('hidden', which !== 'manual');
       secVnc.classList.toggle('hidden', which !== 'novnc');
     }
 
-    $('revealVnc').addEventListener('click', () => { vncForced = true; show('novnc'); });
+    track('captcha solve open', { mode: 'auto' });
+
+    $('revealVnc').addEventListener('click', () => {
+      vncForced = true;
+      track('captcha vnc forced', { from: currentMode });
+      show('novnc');
+    });
 
     answerForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -741,6 +805,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
       if (!answer) return;
       answerBtn.disabled = true;
       manualMsg.textContent = 'Checking…';
+      track('captcha audio submit', { mode: 'manual-audio' });
       try {
         const res = await fetch('/solve-answer?sid=' + encodeURIComponent(sid), {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -760,6 +825,7 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
         if (ts && ts !== lastAudioTs) {
           lastAudioTs = ts;
           audioEl.src = URL.createObjectURL(await res.blob());
+          track('captcha audio ready', { mode: 'manual-audio' });
         }
       } catch (e) {}
     }
@@ -769,6 +835,10 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
         const res = await fetch('/solve-status?sid=' + encodeURIComponent(sid));
         const data = await res.json();
         if (data.status === 'done') {
+          if (!terminal) {
+            terminal = true;
+            track('captcha solve done', { mode: currentMode, ms: Date.now() - startedAt, forced: vncForced });
+          }
           show('auto');
           statusEl.textContent = 'Done — return to Payless, the article is loading.';
           statusEl.className = 'status ok';
@@ -776,6 +846,14 @@ function solveWaitingPage(sid: string, origin: string, vncToken: string): string
           return;
         }
         if (data.status === 'error') {
+          if (!terminal) {
+            terminal = true;
+            track('captcha solve error', {
+              mode: currentMode,
+              ms: Date.now() - startedAt,
+              error: (data.error || 'unknown').slice(0, 120),
+            });
+          }
           statusEl.textContent = data.error || 'Something went wrong. Close this and retry.';
           statusEl.className = 'status err';
           return;

@@ -7,6 +7,7 @@ export type {
 } from "./siteRules";
 
 export type {
+  CaptchaStage,
   CaptchaChallenge,
   ArchiveLinkResult,
   ArticleResult,
