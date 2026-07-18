@@ -29,37 +29,108 @@ export function ArticleReader({
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      startTransition(() => {
-        try {
-          const contentElement = contentRef.current;
-          if (!contentElement) return;
+    const html = document.documentElement;
+    let cancelled = false;
+    let frameId = 0;
+    let orientationTimeoutId = 0;
 
-          const contentRect = contentElement.getBoundingClientRect();
-          const viewportWidth = document.documentElement.clientWidth;
-          const availableWidth = viewportWidth - 32;
+    const getViewportWidth = () =>
+      window.visualViewport?.width ?? document.documentElement.clientWidth;
 
-          const html = document.querySelector("html");
-          if (!html) return;
+    const applyZoom = () => {
+      if (cancelled) return;
 
-          if (contentRect.width > availableWidth) {
-            const zoomLevel = availableWidth / contentRect.width;
-            html.style.zoom = `${Math.max(0.45, Math.min(1, zoomLevel))}`;
-          } else {
-            html.style.zoom = "1";
-          }
-        } catch (error) {
-          console.error("Error adjusting article zoom:", error);
-        }
-      });
-    }, 100);
+      const contentElement = contentRef.current;
+      if (!contentElement) return;
 
-    return () => {
-      window.clearTimeout(timeoutId);
-      const html = document.querySelector("html");
-      if (html) {
+      // Reset before measuring so widths are in unscaled layout pixels.
+      html.style.zoom = "1";
+
+      const contentWidth = Math.max(
+        contentElement.scrollWidth,
+        contentElement.getBoundingClientRect().width
+      );
+      const availableWidth = getViewportWidth() - 8;
+
+      if (contentWidth > availableWidth) {
+        // Slight under-zoom avoids residual horizontal overflow from
+        // subpixels / late layout that still forces a pinch zoom-out.
+        const zoomLevel = (availableWidth / contentWidth) * 0.98;
+        html.style.zoom = `${Math.max(0.45, Math.min(1, zoomLevel))}`;
+      } else {
         html.style.zoom = "1";
       }
+    };
+
+    const scheduleZoom = () => {
+      frameId = window.requestAnimationFrame(() => {
+        frameId = window.requestAnimationFrame(() => {
+          startTransition(() => {
+            try {
+              applyZoom();
+            } catch (error) {
+              console.error("Error adjusting article zoom:", error);
+            }
+          });
+        });
+      });
+    };
+
+    const waitForImages = (element: HTMLElement) => {
+      const images = [...element.querySelectorAll("img")];
+      if (images.length === 0) return Promise.resolve();
+
+      return Promise.race([
+        Promise.all(
+          images.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete) {
+                  resolve();
+                  return;
+                }
+                img.addEventListener("load", () => resolve(), { once: true });
+                img.addEventListener("error", () => resolve(), { once: true });
+              })
+          )
+        ),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 1500);
+        }),
+      ]).then(() => undefined);
+    };
+
+    const run = async () => {
+      try {
+        const contentElement = contentRef.current;
+        if (!contentElement) return;
+
+        await waitForImages(contentElement);
+        if (cancelled) return;
+
+        scheduleZoom();
+      } catch (error) {
+        console.error("Error adjusting article zoom:", error);
+      }
+    };
+
+    void run();
+
+    const onOrientationChange = () => {
+      window.clearTimeout(orientationTimeoutId);
+      orientationTimeoutId = window.setTimeout(() => {
+        scheduleZoom();
+      }, 250);
+    };
+
+    window.addEventListener("orientationchange", onOrientationChange);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(orientationTimeoutId);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      html.style.zoom = "1";
     };
   }, [article]);
 
