@@ -32,7 +32,10 @@ services:
       - archive-data:/data
     # Chromium needs more than the default 64MB /dev/shm.
     shm_size: "1gb"
-    ports:
+    # expose, not ports: Coolify's proxy (Traefik) routes the domains to these
+    # container ports over its internal network + issues TLS. Publishing host
+    # ports would also open the unauthenticated API + noVNC on the raw VPS IP.
+    expose:
       - "8788"
       - "6080"
     restart: unless-stopped
