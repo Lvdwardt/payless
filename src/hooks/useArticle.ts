@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { getArchiveLink } from "@/utils/getArchiveLink";
 import getArticle from "@/utils/getArticle";
+import getNativeArticle from "@/utils/getNativeArticle";
+import { isNativeMigratedHost } from "@/data/nativeSites";
 import {
   ARCHIVE_BASE,
   buildArchiveChallengeUrl,
 } from "@/utils/archiveDetect";
 import { trackEvent, websiteFromUrl } from "@/hooks/useUmami";
 import type { ArticleState, CaptchaStage } from "@/types/article";
-import type { Font } from "@/types/font";
+import type { ReaderExperience } from "@/types/reader-experience";
 
 const RETRY_INTERVAL_MS = 4000;
 const FAST_RETRY_INTERVAL_MS = 2000;
 const FAST_RETRY_WINDOW_MS = 90_000;
 
-async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
+async function resolveArticle(
+  url: string,
+  experience: ReaderExperience
+): Promise<ArticleState> {
   const archiveLink = await getArchiveLink(url);
 
   if (archiveLink.status === "captcha") {
@@ -32,12 +37,34 @@ async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
     return { status: "error", message: "No archive link found" };
   }
 
-  const article = await getArticle(
-    archiveLink.link,
-    ARCHIVE_BASE,
-    url,
-    font
-  );
+  const host = new URL(url).hostname;
+  const useNative = experience === "native" && isNativeMigratedHost(host);
+
+  if (useNative) {
+    const nativeResult = await getNativeArticle(archiveLink.link, ARCHIVE_BASE, url);
+
+    if (nativeResult.status === "captcha") {
+      return {
+        status: "captcha",
+        challengeUrl: nativeResult.challengeUrl,
+        stage: nativeResult.stage,
+      };
+    }
+
+    if (nativeResult.status === "ok" && nativeResult.mode === "native") {
+      return {
+        status: "ready",
+        mode: "native",
+        article: nativeResult.article,
+        archiveLink: archiveLink.link,
+      };
+    }
+
+    // Native extraction failed for a non-captcha reason — fall back to the
+    // legacy pipeline below without flipping the user's stored toggle.
+  }
+
+  const article = await getArticle(archiveLink.link, ARCHIVE_BASE, url);
 
   if (article.status === "captcha") {
     return {
@@ -51,8 +78,13 @@ async function resolveArticle(url: string, font: Font): Promise<ArticleState> {
     return { status: "error", message: article.message };
   }
 
+  if (article.mode !== "legacy") {
+    return { status: "error", message: "Unexpected article mode." };
+  }
+
   return {
     status: "ready",
+    mode: "legacy",
     html: article.html,
     archiveLink: archiveLink.link,
   };
@@ -65,7 +97,7 @@ function captchaVia(challengeUrl: string): "proxy" | "direct" {
 /**
  * Fetch article content from archive, staying in-app through CAPTCHA challenges.
  */
-export function useArticle(url: string, font: Font) {
+export function useArticle(url: string, experience: ReaderExperience) {
   const [state, setState] = useState<ArticleState>({ status: "idle" });
   const captchaWindowRef = useRef<Window | null>(null);
   const inFlightRef = useRef(false);
@@ -73,15 +105,15 @@ export function useArticle(url: string, font: Font) {
   const captchaOpenedAtRef = useRef<number | null>(null);
   const captchaSeenAtRef = useRef<number | null>(null);
   const captchaStageRef = useRef<CaptchaStage | null>(null);
-  const fontRef = useRef(font);
+  const experienceRef = useRef(experience);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    fontRef.current = font;
-  }, [font]);
+    experienceRef.current = experience;
+  }, [experience]);
 
   function applyState(next: ArticleState) {
     const prev = stateRef.current;
@@ -128,6 +160,11 @@ export function useArticle(url: string, font: Font) {
       captchaWindowRef.current?.close();
       captchaWindowRef.current = null;
       captchaOpenedAtRef.current = null;
+      trackEvent("reader mode", {
+        website: domain,
+        mode: next.mode,
+        experience: experienceRef.current,
+      });
     }
 
     setState(next);
@@ -153,7 +190,7 @@ export function useArticle(url: string, font: Font) {
       setState({ status: "loading" });
 
       try {
-        const next = await resolveArticle(url, fontRef.current);
+        const next = await resolveArticle(url, experienceRef.current);
         if (!cancelled) {
           applyState(next);
         }
@@ -167,9 +204,9 @@ export function useArticle(url: string, font: Font) {
     return () => {
       cancelled = true;
     };
-    // applyState closes over url; reload when url changes only
+    // applyState closes over url; reload when url or experience changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [url, experience]);
 
   // After CAPTCHA, archive often clears access for this device/IP — retry
   // silently while the challenge UI stays visible.
@@ -185,7 +222,7 @@ export function useArticle(url: string, font: Font) {
 
       inFlightRef.current = true;
       try {
-        const next = await resolveArticle(url, fontRef.current);
+        const next = await resolveArticle(url, experienceRef.current);
         if (cancelled || stateRef.current.status !== "captcha") return;
 
         if (next.status === "captcha") {
@@ -272,7 +309,7 @@ export function useArticle(url: string, font: Font) {
       inFlightRef.current = true;
       setState({ status: "loading" });
       try {
-        const next = await resolveArticle(url, fontRef.current);
+        const next = await resolveArticle(url, experienceRef.current);
         applyState(next);
       } finally {
         inFlightRef.current = false;
@@ -283,7 +320,10 @@ export function useArticle(url: string, font: Font) {
   return {
     state,
     isLoading: state.status === "loading",
-    article: state.status === "ready" ? state.html : "",
+    mode: state.status === "ready" ? state.mode : null,
+    articleHtml: state.status === "ready" && state.mode === "legacy" ? state.html : "",
+    nativeArticle:
+      state.status === "ready" && state.mode === "native" ? state.article : null,
     articleLink: state.status === "ready" ? state.archiveLink : "",
     captchaUrl: state.status === "captcha" ? state.challengeUrl : null,
     error: state.status === "error" ? state.message : null,
