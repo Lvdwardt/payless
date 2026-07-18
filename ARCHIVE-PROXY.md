@@ -69,12 +69,28 @@ the `qki` cookie expires.
 |---|---|
 | `GET /session` | Issue a session id (`sid`). |
 | `GET /fetch?url=&sid=` | Fetch archive HTML via the jar. Returns `{status, captcha, html, challengeUrl}`. |
-| `GET /solve?url=&sid=` | Solve page (embeds same-origin gated noVNC in prod). Drives Chromium to the challenge. |
-| `GET /solve-status?sid=` | Poll `idle\|solving\|done\|error` + cookie count + `warm`. |
+| `GET /solve?url=&sid=` | Tiered solve page (auto → audio+input → noVNC). Drives reCAPTCHA server-side. |
+| `GET /solve-status?sid=` | Poll `idle\|solving\|awaiting-answer\|done\|error` + `mode` + `audioTs` + cookies + `warm`. |
+| `GET /solve-audio?sid=` | The captured reCAPTCHA audio clip (`audio/mpeg`), for the operator to play. |
+| `POST /solve-answer?sid=` | Body `{answer}` — the operator's transcription of the audio (tier 2). |
 | `GET /challenge?url=&sid=` | Reverse-proxy an archive page (link-rewritten) — used inside the solve flow. |
-| `GET /vnc/*` | Same-origin noVNC static (proxied from loopback websockify). |
+| `GET /vnc/*` | Same-origin noVNC static (proxied from loopback websockify) — tier-3 fallback. |
 | `WS /vnc/websockify/<token>` | Gated VNC bridge — only opens for a live solve token. |
 | `GET /health` | `{ok, cookies, warm}`. |
+
+### Solve tiers
+
+The `/solve` flow escalates automatically, worst case falling through to noVNC —
+so it is never worse than a manual solve:
+
+1. **Auto** — the server ticks the reCAPTCHA checkbox, switches to the audio
+   challenge, and (if `OPENAI_API_KEY` is set) transcribes the clip with Whisper
+   and submits it. No operator interaction.
+2. **Manual audio** — if there's no key or transcription fails, the solve page
+   plays the captured clip and takes a typed answer (`/solve-answer`), which the
+   server fills into reCAPTCHA and verifies.
+3. **noVNC** — if reCAPTCHA blocks the audio path (automated-queries), the gated
+   same-origin browser view opens for a fully manual solve.
 
 ## Env reference
 
@@ -86,4 +102,6 @@ the `qki` cookie expires.
 | `VNC_INTERNAL` | _(unset)_ | `1` = serve + gate noVNC same-origin through the proxy (production default). No password, no public VNC port. |
 | `NOVNC_PORT` | `6080` | Loopback port websockify listens on inside the container. |
 | `VNC_URL` | _(unset)_ | Legacy: external noVNC URL embedded in the solve page. Superseded by `VNC_INTERNAL`. |
+| `OPENAI_API_KEY` | _(unset)_ | Enables tier-1 auto-transcription (Whisper) of the audio challenge. Unset = skip to manual audio. |
+| `TRANSCRIBE_MODEL` | `whisper-1` | STT model used when `OPENAI_API_KEY` is set. |
 | `CHROME_PATH` | _(unset)_ | Override Chromium binary; base image auto-detects. |

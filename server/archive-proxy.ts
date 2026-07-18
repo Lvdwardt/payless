@@ -24,8 +24,10 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 type Session = {
   touchedAt: number;
-  solveStatus: "idle" | "solving" | "done" | "error";
+  solveStatus: "idle" | "solving" | "awaiting-answer" | "done" | "error";
   solveError?: string;
+  /** Which solve tier the operator UI should show right now. */
+  solveMode?: "auto" | "manual-audio" | "novnc";
 };
 
 /** Short-lived grant that lets the solve page reach noVNC, bound to one solve. */
@@ -68,7 +70,14 @@ const vncTokens = new Map<string, VncToken>();
  * in their own browser instead.
  */
 const solveAudio = new Map<string, { buf: Uint8Array; ts: number }>();
+/** sid → resolver waiting for the operator's typed audio answer (tier 2). */
+const pendingAnswers = new Map<string, (answer: string | null) => void>();
 let sharedBrowser: Browser | null = null;
+
+/** Optional STT for tier-1 auto solve. If unset, we skip straight to manual audio. */
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+/** Model + endpoint for Whisper transcription. */
+const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "whisper-1";
 
 loadCookies();
 
@@ -83,6 +92,9 @@ function pruneSessions() {
   }
   for (const sid of solveAudio.keys()) {
     if (!sessions.has(sid)) solveAudio.delete(sid);
+  }
+  for (const sid of pendingAnswers.keys()) {
+    if (!sessions.has(sid)) pendingAnswers.get(sid)?.(null);
   }
 }
 
@@ -129,6 +141,9 @@ const server = Bun.serve({
       }
       if (url.pathname === "/solve-audio") {
         return handleSolveAudio(request);
+      }
+      if (url.pathname === "/solve-answer") {
+        return cors(await handleSolveAnswer(request), request);
       }
       if (url.pathname === "/challenge") {
         return handleChallenge(request);
@@ -257,13 +272,36 @@ async function handleFetch(request: Request): Promise<Response> {
 function handleSolveStatus(request: Request): Response {
   const sid = ensureSession(request);
   const session = getSession(sid);
+  const audio = solveAudio.get(sid);
   return Response.json({
     sid,
     status: session.solveStatus,
+    mode: session.solveMode || "auto",
     error: session.solveError || null,
+    audioTs: audio?.ts || null,
     cookieCount: Object.keys(archiveCookies).length,
     warm: Boolean(archiveCookies.qki),
   });
+}
+
+async function handleSolveAnswer(request: Request): Promise<Response> {
+  const sid = ensureSession(request);
+  let answer = "";
+  try {
+    const body = (await request.json()) as { answer?: string };
+    answer = (body.answer || "").trim();
+  } catch {
+    answer = "";
+  }
+  if (!answer) {
+    return Response.json({ error: "Empty answer" }, { status: 400 });
+  }
+  const resolve = pendingAnswers.get(sid);
+  if (!resolve) {
+    return Response.json({ error: "Not awaiting an answer" }, { status: 409 });
+  }
+  resolve(answer);
+  return Response.json({ ok: true });
 }
 
 function handleSolveAudio(request: Request): Response {
@@ -362,9 +400,25 @@ async function runInteractiveSolve(sid: string, target: string) {
 
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    console.log(`[archive-proxy] Solve window open for ${sid} → ${target}`);
+    console.log(`[archive-proxy] Solve started for ${sid} → ${target}`);
 
-    // Wait until we have real archive content (CAPTCHA pages don't include these).
+    // Escalating solve: auto (STT) → manual audio → noVNC. Any failure in the
+    // driven path falls through to the universal wait below, where a human can
+    // still finish it in noVNC — so this is never worse than the old flow.
+    if (!(await hasArchiveContent(page))) {
+      try {
+        await driveRecaptcha(sid, page, context);
+      } catch (error) {
+        session.solveMode = "novnc";
+        console.warn(
+          `[archive-proxy] driven solve fell back to noVNC for ${sid}:`,
+          error instanceof Error ? error.message : error
+        );
+      }
+    }
+
+    // Universal success gate — reached by the auto/manual solve OR a human in
+    // noVNC. CAPTCHA pages don't have these markers.
     await page.waitForFunction(
       () => {
         const html = document.documentElement?.innerHTML || "";
@@ -402,8 +456,155 @@ async function runInteractiveSolve(sid: string, target: string) {
       error instanceof Error ? error.message : "Failed to complete CAPTCHA";
     console.error("[archive-proxy] solve failed", error);
   } finally {
+    pendingAnswers.get(sid)?.(null);
     await context?.close().catch(() => undefined);
   }
+}
+
+/** True once the page shows real archive content (challenge cleared). */
+async function hasArchiveContent(page: Page): Promise<boolean> {
+  return page
+    .evaluate(() => {
+      const html = document.documentElement?.innerHTML || "";
+      const hasContent = !!document.querySelector("#CONTENT");
+      const hasArchiveLink =
+        /href="https:\/\/archive\.(is|ph|today|vn|fo)\/[a-zA-Z0-9]{4,7}"/.test(
+          html
+        );
+      const stillCaptcha =
+        !!document.querySelector("#g-recaptcha, .g-recaptcha") ||
+        /why do i have to complete a captcha/i.test(
+          document.body?.innerText || ""
+        );
+      return !stillCaptcha && (hasContent || hasArchiveLink);
+    })
+    .catch(() => false);
+}
+
+/** Poll for cleared content up to `ms`. */
+async function settledSuccess(page: Page, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await hasArchiveContent(page)) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+/**
+ * Drive reCAPTCHA v2 without noVNC: tick the checkbox, switch to the audio
+ * challenge, then per attempt — transcribe automatically (tier 1) or ask the
+ * operator to type what they hear (tier 2) — fill + verify. Throws to fall back
+ * to noVNC (tier 3) on block or exhaustion.
+ */
+async function driveRecaptcha(
+  sid: string,
+  page: Page,
+  context: BrowserContext
+): Promise<void> {
+  const session = getSession(sid);
+  session.solveMode = "auto";
+
+  const anchor = page.frameLocator(
+    'iframe[title="reCAPTCHA"], iframe[src*="/recaptcha/api2/anchor"]'
+  );
+  await anchor.locator("#recaptcha-anchor").click({ timeout: 20000 });
+
+  // Checkbox alone sometimes grants the token (no challenge).
+  if (await settledSuccess(page, 4000)) return;
+
+  const bframe = page.frameLocator(
+    'iframe[title*="challenge"], iframe[src*="/recaptcha/api2/bframe"]'
+  );
+  await bframe.locator("#recaptcha-audio-button").click({ timeout: 20000 });
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // Google blocks automated audio from flagged IPs — bail to noVNC.
+    const blocked = await bframe
+      .locator(".rc-doscaptcha-header")
+      .isVisible()
+      .catch(() => false);
+    if (blocked) {
+      session.solveMode = "novnc";
+      throw new Error("reCAPTCHA blocked the audio challenge (automated queries)");
+    }
+
+    // Locate + fetch the audio clip (in-context request carries the session).
+    const src =
+      (await bframe
+        .locator("#audio-source")
+        .getAttribute("src", { timeout: 15000 })
+        .catch(() => null)) ||
+      (await bframe
+        .locator(".rc-audiochallenge-tdownload-link")
+        .getAttribute("href")
+        .catch(() => null));
+
+    if (src) {
+      try {
+        const res = await context.request.get(src);
+        const buf = new Uint8Array(await res.body());
+        solveAudio.set(sid, { buf, ts: Date.now() });
+      } catch {
+        // fall back to whatever the response hook captured
+      }
+    }
+    const clip = solveAudio.get(sid)?.buf ?? null;
+
+    // Tier 1: automatic transcription.
+    let answer: string | null = null;
+    if (clip) answer = await transcribeAudio(clip).catch(() => null);
+
+    // Tier 2: hand the clip to the operator and wait for their typed answer.
+    if (!answer) {
+      session.solveMode = "manual-audio";
+      session.solveStatus = "awaiting-answer";
+      answer = await waitForAnswer(sid, 4 * 60 * 1000);
+      session.solveStatus = "solving";
+    }
+    if (!answer) throw new Error("no audio answer provided");
+
+    await bframe.locator("#audio-response").fill(answer, { timeout: 10000 });
+    await bframe.locator("#recaptcha-verify-button").click({ timeout: 10000 });
+
+    if (await settledSuccess(page, 6000)) return;
+    // Wrong/expired → reCAPTCHA serves a fresh clip; loop and try again.
+    session.solveMode = OPENAI_API_KEY ? "auto" : "manual-audio";
+  }
+
+  throw new Error("exhausted audio attempts");
+}
+
+/** Wait for /solve-answer to deliver the operator's typed answer, or time out. */
+function waitForAnswer(sid: string, ms: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingAnswers.delete(sid);
+      resolve(null);
+    }, ms);
+    pendingAnswers.set(sid, (answer) => {
+      clearTimeout(timer);
+      pendingAnswers.delete(sid);
+      resolve(answer);
+    });
+  });
+}
+
+/** Tier-1 STT via Whisper. Returns null when no key is set or the call fails. */
+async function transcribeAudio(buf: Uint8Array): Promise<string | null> {
+  if (!OPENAI_API_KEY) return null;
+  const form = new FormData();
+  form.append("file", new Blob([buf], { type: "audio/mpeg" }), "audio.mp3");
+  form.append("model", TRANSCRIBE_MODEL);
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: form,
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { text?: string };
+  const text = (data.text || "").trim().toLowerCase().replace(/[^a-z0-9 ]/g, "");
+  return text || null;
 }
 
 async function getBrowser(): Promise<Browser> {
@@ -451,96 +652,141 @@ async function getBrowser(): Promise<Browser> {
 }
 
 function solveWaitingPage(sid: string, origin: string, vncToken: string): string {
-  // On the VPS the solve happens in a browser you can't see — embed noVNC so you
-  // can reach in and tap the checkbox from your phone. Locally the window just
-  // opens on your screen.
-  //
-  // VNC_INTERNAL: noVNC is served + gated same-origin by this proxy. The iframe
-  // points at our own /vnc/… and the websocket path carries a one-time token
-  // bound to this solve, so there is no public VNC door and no password prompt.
-  let solver: string;
-  if (VNC_INTERNAL) {
-    const wsPath = encodeURIComponent(`vnc/websockify/${vncToken}`);
-    const vncSrc = `${origin}/vnc/vnc.html?autoconnect=1&resize=remote&reconnect=1&path=${wsPath}`;
-    solver = `<iframe class="vnc" src="${vncSrc}" allow="clipboard-read; clipboard-write"></iframe>
-    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`;
-  } else if (VNC_URL) {
-    solver = `<iframe class="vnc" src="${VNC_URL}" allow="clipboard-read; clipboard-write"></iframe>
-    <p class="hint">Tap the reCAPTCHA above. When it clears, this closes itself and the article loads back in the app.</p>`;
-  } else {
-    solver = `<p>A Chrome window should open on this machine. Solve the checkbox there.</p>`;
-  }
+  // Tiered solve UI:
+  //   auto         → the server drives reCAPTCHA + transcribes; just wait.
+  //   manual-audio → play the captured clip, type what you hear, submit.
+  //   novnc        → last resort: drive the real browser (gated, no password).
+  const wsPath = encodeURIComponent(`vnc/websockify/${vncToken}`);
+  const vncSrc = VNC_INTERNAL
+    ? `${origin}/vnc/vnc.html?autoconnect=1&resize=remote&reconnect=1&path=${wsPath}`
+    : VNC_URL || "";
+  const novncIframe = vncSrc
+    ? `<iframe class="vnc" id="vncframe" src="${vncSrc}" allow="clipboard-read; clipboard-write"></iframe>`
+    : `<p class="hint">A Chrome window should open on this machine — solve it there.</p>`;
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Payless CAPTCHA</title>
+  <title>Payless — unlocking article</title>
   <style>
     body { font-family: Georgia, serif; background: #f4f2ec; color: #2a2438; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
-    header { padding: 1rem 1.25rem 0.5rem; text-align: center; }
+    header { padding: 1.25rem 1.25rem 0.5rem; text-align: center; }
     h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
-    .hint { margin: 0.5rem 1.25rem; color: #5b5368; font-size: 0.85rem; text-align: center; }
+    .wrap { flex: 1; display: flex; flex-direction: column; }
+    section { padding: 0.75rem 1.25rem; text-align: center; }
+    .hidden { display: none !important; }
+    .hint { margin: 0.5rem auto; color: #5b5368; font-size: 0.85rem; max-width: 30rem; }
+    .spinner { width: 34px; height: 34px; margin: 1rem auto; border: 3px solid #d9d3c7; border-top-color: #2a2438; border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    audio { width: 100%; max-width: 420px; margin: 0.5rem 0; }
+    .answer { display: flex; gap: 0.5rem; max-width: 420px; margin: 0.5rem auto; }
+    .answer input { flex: 1; padding: 0.6rem 0.7rem; font-size: 1rem; border: 1px solid #c8c1b3; border-radius: 8px; }
+    button { padding: 0.6rem 1rem; font-size: 0.95rem; border: 0; border-radius: 8px; background: #2a2438; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .link { background: none; color: #5b5368; text-decoration: underline; padding: 0.4rem; font-size: 0.8rem; }
     .vnc { flex: 1; width: 100%; border: 0; min-height: 60vh; }
-    .audiobar { padding: 0.5rem 1.25rem; text-align: center; }
-    .audiobar audio { width: 100%; max-width: 420px; }
-    .audiobar .muted { margin: 0 0 0.4rem; color: #5b5368; font-size: 0.8rem; }
-    .audiobar .ready { color: #0f7a45; font-weight: bold; }
     .status { padding: 0.75rem 1.25rem 1rem; text-align: center; font-family: ui-monospace, monospace; font-size: 0.8rem; color: #5b5368; }
-    .ok { color: #0f7a45; }
-    .err { color: #a12626; }
+    .ok { color: #0f7a45; } .err { color: #a12626; } .ready { color: #0f7a45; font-weight: bold; }
   </style>
 </head>
 <body>
-  <header><h1>Complete the CAPTCHA</h1></header>
-  ${solver}
-  <div class="audiobar" id="audiobar">
-    <p class="muted" id="audiomsg">Challenge too hard? In the reCAPTCHA tap the headphones (audio challenge) — the clip appears here to play, then type what you hear into the box above.</p>
-    <audio id="capaudio" controls preload="none"></audio>
+  <header><h1>Unlocking your article</h1></header>
+  <div class="wrap">
+    <section id="auto">
+      <div class="spinner"></div>
+      <p class="hint">Solving the CAPTCHA automatically… this is usually quick.</p>
+    </section>
+
+    <section id="manual" class="hidden">
+      <p class="hint ready">Couldn't auto-solve — listen and help out. Press play, then type what you hear.</p>
+      <audio id="capaudio" controls preload="none"></audio>
+      <form class="answer" id="answerForm">
+        <input id="answerInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type what you hear" />
+        <button type="submit" id="answerBtn">Submit</button>
+      </form>
+      <p class="hint" id="manualMsg"></p>
+    </section>
+
+    <section id="novnc" class="hidden" style="flex:1; display:flex; flex-direction:column;">
+      <p class="hint">Manual mode — solve the reCAPTCHA in the browser view below.</p>
+      ${novncIframe}
+    </section>
+
+    <button type="button" class="link" id="revealVnc">Trouble? Solve it manually in a browser</button>
   </div>
-  <p class="status" id="status">Waiting for CAPTCHA…</p>
+  <p class="status" id="status">Starting…</p>
+
   <script>
     const sid = ${JSON.stringify(sid)};
-    const statusEl = document.getElementById('status');
-    const audioEl = document.getElementById('capaudio');
-    const audioMsg = document.getElementById('audiomsg');
-    let lastAudioTs = '';
-    async function pollAudio() {
+    const $ = (id) => document.getElementById(id);
+    const statusEl = $('status');
+    const secAuto = $('auto'), secManual = $('manual'), secVnc = $('novnc');
+    const audioEl = $('capaudio'), manualMsg = $('manualMsg');
+    const answerForm = $('answerForm'), answerInput = $('answerInput'), answerBtn = $('answerBtn');
+    let lastAudioTs = '', vncForced = false;
+
+    function show(which) {
+      secAuto.classList.toggle('hidden', which !== 'auto');
+      secManual.classList.toggle('hidden', which !== 'manual');
+      secVnc.classList.toggle('hidden', which !== 'novnc');
+    }
+
+    $('revealVnc').addEventListener('click', () => { vncForced = true; show('novnc'); });
+
+    answerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const answer = answerInput.value.trim();
+      if (!answer) return;
+      answerBtn.disabled = true;
+      manualMsg.textContent = 'Checking…';
+      try {
+        const res = await fetch('/solve-answer?sid=' + encodeURIComponent(sid), {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ answer }),
+        });
+        if (res.ok) { answerInput.value = ''; manualMsg.textContent = 'Submitted — verifying…'; }
+        else { manualMsg.textContent = 'Not ready for an answer yet, hang on…'; }
+      } catch (err) { manualMsg.textContent = 'Network hiccup — try again.'; }
+      answerBtn.disabled = false;
+    });
+
+    async function loadAudioIfNew() {
       try {
         const res = await fetch('/solve-audio?sid=' + encodeURIComponent(sid), { cache: 'no-store' });
-        if (res.ok) {
-          const ts = res.headers.get('x-audio-ts') || '';
-          if (ts && ts !== lastAudioTs) {
-            lastAudioTs = ts;
-            const blob = await res.blob();
-            audioEl.src = URL.createObjectURL(blob);
-            audioMsg.textContent = '▶ Audio challenge ready — press play, then type what you hear.';
-            audioMsg.className = 'ready';
-          }
+        if (!res.ok) return;
+        const ts = res.headers.get('x-audio-ts') || '';
+        if (ts && ts !== lastAudioTs) {
+          lastAudioTs = ts;
+          audioEl.src = URL.createObjectURL(await res.blob());
         }
       } catch (e) {}
-      setTimeout(pollAudio, 2000);
     }
-    pollAudio();
+
     async function poll() {
       try {
         const res = await fetch('/solve-status?sid=' + encodeURIComponent(sid));
         const data = await res.json();
         if (data.status === 'done') {
-          statusEl.textContent = 'CAPTCHA cleared. Return to Payless — the article should load automatically.';
+          show('auto');
+          statusEl.textContent = 'Done — return to Payless, the article is loading.';
           statusEl.className = 'status ok';
           setTimeout(() => { try { window.close(); } catch (e) {} }, 1500);
           return;
         }
         if (data.status === 'error') {
-          statusEl.textContent = data.error || 'Something went wrong. Close this and try again.';
+          statusEl.textContent = data.error || 'Something went wrong. Close this and retry.';
           statusEl.className = 'status err';
           return;
         }
-        statusEl.textContent = 'Waiting for CAPTCHA… (' + (data.cookieCount || 0) + ' cookies' + (data.warm ? ', warm' : '') + ')';
+        const awaiting = data.status === 'awaiting-answer' || data.mode === 'manual-audio';
+        if (vncForced || data.mode === 'novnc') { show('novnc'); }
+        else if (awaiting) { show('manual'); await loadAudioIfNew(); }
+        else { show('auto'); }
+        statusEl.textContent = 'Working… (' + (data.cookieCount || 0) + ' cookies' + (data.warm ? ', warm' : '') + ')';
       } catch (e) {
-        statusEl.textContent = 'Still waiting…';
+        statusEl.textContent = 'Still working…';
       }
       setTimeout(poll, 1500);
     }
