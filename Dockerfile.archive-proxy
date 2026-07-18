@@ -1,0 +1,33 @@
+# Archive proxy with a real Chromium you can solve CAPTCHAs in over noVNC.
+#
+# Base image ships Chromium + all libs at /ms-playwright (PLAYWRIGHT_BROWSERS_PATH),
+# matching playwright-core 1.61.x. We add: Xvfb (virtual display), fluxbox (wm),
+# x11vnc (screen → VNC), noVNC + websockify (VNC → browser), and Bun (runtime).
+FROM mcr.microsoft.com/playwright:v1.61.1-jammy
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    DISPLAY=:99 \
+    ARCHIVE_PROXY_PORT=8788
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      xvfb x11vnc x11-utils fluxbox novnc websockify curl unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bun runtime.
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+WORKDIR /app
+
+# Install deps (playwright-core lives in devDependencies, so full install).
+COPY package.json bun.lock tsconfig.json ./
+RUN bun install --frozen-lockfile
+
+COPY server ./server
+COPY docker/archive-proxy-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 8788 = proxy API, 6080 = noVNC solve UI.
+EXPOSE 8788 6080
+
+ENTRYPOINT ["/entrypoint.sh"]
