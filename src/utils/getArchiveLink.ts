@@ -1,4 +1,5 @@
 import type { ArchiveLinkResult } from "@/types/article";
+import { trackEvent } from "@/hooks/useUmami";
 import {
   ARCHIVE_BASE,
   buildArchiveChallengeUrl,
@@ -29,6 +30,10 @@ export async function getArchiveLink(url: string): Promise<ArchiveLinkResult> {
       (blocked) => domain === blocked || domain.endsWith(`.${blocked}`)
     )
   ) {
+    trackEvent("not working", {
+      website: domain,
+      status: "not working",
+    });
     return { status: "error", message: "This site is not supported" };
   }
 
@@ -46,9 +51,16 @@ export async function getArchiveLink(url: string): Promise<ArchiveLinkResult> {
 
     const link = extractArchiveSnapshotLink(page.html);
     if (link) {
+      trackEvent("working", {
+        website: domain,
+      });
       return { status: "ok", link };
     }
 
+    trackEvent("no link found", {
+      website: domain,
+      status: "no link found",
+    });
     return { status: "not_found" };
   } catch (error) {
     console.error("Error getting archive link:", error);

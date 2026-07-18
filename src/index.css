@@ -3,6 +3,34 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: "Gotham";
+  src: url("./fonts/Gotham-Book.woff2") format("woff2");
+  font-weight: 100;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("./fonts/Gotham-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("./fonts/Gotham-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gotham";
+  src: url("./fonts/Gotham-Black.woff2") format("woff2");
+  font-weight: 900;
+  font-display: swap;
+}
+
 html {
   background-color: var(--background);
 }
@@ -43,7 +71,7 @@ html {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: Montserrat, sans-serif;
+  --font-sans: "Gotham", sans-serif;
   --font-mono: Fira Code, monospace;
   --font-serif: Georgia, serif;
   --radius: 0.35rem;
@@ -106,7 +134,7 @@ html {
   --sidebar-border: oklch(0.8083 0.0174 271.1982);
   --sidebar-ring: oklch(0.5547 0.2503 297.0156);
   --destructive-foreground: oklch(1 0 0);
-  --font-sans: Montserrat, sans-serif;
+  --font-sans: "Gotham", sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Fira Code, monospace;
   --shadow-color: hsl(240 30% 25%);
@@ -167,7 +195,7 @@ html {
   --sidebar-ring: oklch(0.7871 0.1187 304.7693);
   --destructive-foreground: oklch(0.2429 0.0304 283.911);
   --radius: 0.35rem;
-  --font-sans: Montserrat, sans-serif;
+  --font-sans: "Gotham", sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Fira Code, monospace;
   --shadow-color: hsl(240 30% 25%);
@@ -198,7 +226,13 @@ html {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
     letter-spacing: var(--tracking-normal);
   }
+}
+
+/* Archived article HTML often assumes content-box sizing */
+.revert-box-sizing,
+.revert-box-sizing * {
+  box-sizing: content-box;
 }

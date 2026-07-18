@@ -1,106 +1,174 @@
-/**
- * Extracts and processes URLs from query strings
- */
+const UNSHORTENER_BASE = "https://url-unshortener.lvdw.workers.dev/";
+
+export type UrlExtractionResult =
+  | { status: "ok"; url: string }
+  | { status: "empty" }
+  | { status: "error"; message: string };
 
 /**
- * Extracts HTTP URL from a query string if it contains one
+ * Extracts an HTTP(S) URL from shared text that may include a title.
  */
 function extractHttpUrl(query: string): string {
-  if (query.includes("http")) {
-    return query.substring(query.indexOf("http"));
+  const match = query.match(/https?:\/\/\S+/i);
+  return match ? match[0].replace(/[)\],.;]+$/, "") : query.trim();
+}
+
+async function unshorten(url: string): Promise<string> {
+  const response = await fetch(
+    `${UNSHORTENER_BASE}?url=${encodeURIComponent(url)}`
+  );
+  const body = (await response.text()).trim();
+
+  if (!response.ok) {
+    throw new Error(`Unshortener failed (${response.status})`);
   }
-  return query;
+
+  if (body.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(body) as { error?: string; message?: string };
+      throw new Error(parsed.message || parsed.error || "Unshortener error");
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        return body;
+      }
+      throw error;
+    }
+  }
+
+  return body;
+}
+
+function isFinalArticleUrl(url: string): boolean {
+  if (!url.startsWith("http")) return false;
+  try {
+    const hostname = new URL(url).hostname;
+    return (
+      !hostname.includes("google.com") &&
+      !hostname.includes("share.google") &&
+      hostname !== "share.google"
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Processes search.app URLs to extract the actual link
+ * Processes search.app URLs to extract the actual link.
  */
 async function processSearchAppUrl(query: string): Promise<string> {
-  // Look for link parameter in search.app URLs
-  const linkMatch = query.match(/link=([^&]+)/);
+  const linkMatch = query.match(/[?&]link=([^&]+)/);
   if (linkMatch) {
     return decodeURIComponent(linkMatch[1]);
   }
 
-  // If no link parameter, try to unshorten the URL
-  const urlPart = query.split(" ")[0];
-  try {
-    const response = await fetch(
-      `https://url-unshortener.lvdw.workers.dev/?url=${urlPart}`
-    );
-    return await response.text();
-  } catch (error) {
-    console.error("Error processing search.app URL:", error);
-    return query;
-  }
+  const urlPart = query.split(/\s+/)[0];
+  return unshorten(urlPart);
 }
 
 /**
- * Processes Google share URLs to extract the actual URL
+ * Resolves share.google / www.google.com/share.google short links.
  */
 async function processGoogleShareUrl(query: string): Promise<string> {
-  const googleShareMatch = query.match(
-    /https:\/\/share\.google\/([a-zA-Z0-9]+)/
+  const shareIdMatch = query.match(
+    /(?:https?:\/\/)?(?:www\.)?share\.google\/([a-zA-Z0-9]+)/i
+  );
+  const intermediateMatch = query.match(
+    /https?:\/\/(?:www\.)?google\.com\/share\.google\?q=([a-zA-Z0-9]+)/i
   );
 
-  if (!googleShareMatch) {
-    return query;
+  const shareId = shareIdMatch?.[1] || intermediateMatch?.[1];
+  if (!shareId) {
+    throw new Error("No Google share link found");
   }
 
-  const shareId = googleShareMatch[1];
+  if (shareId.toLowerCase() === "error") {
+    throw new Error("This Google share link is invalid or expired");
+  }
+
   const intermediateUrl = `https://www.google.com/share.google?q=${shareId}`;
+  const resolvedUrl = await unshorten(intermediateUrl);
 
-  try {
-    const unshortenerUrl = `https://url-unshortener.lvdw.workers.dev/?url=${intermediateUrl}`;
-    const response = await fetch(unshortenerUrl);
-    const resolvedUrl = await response.text();
-
-    // Return resolved URL if it's valid and not still a Google URL
-    if (
-      resolvedUrl &&
-      resolvedUrl.startsWith("http") &&
-      !resolvedUrl.includes("google.com") &&
-      !resolvedUrl.includes("share.google")
-    ) {
-      return resolvedUrl;
-    }
-  } catch (error) {
-    console.error("Error resolving Google share URL:", error);
+  if (isFinalArticleUrl(resolvedUrl)) {
+    return resolvedUrl;
   }
 
-  return query;
+  // Some resolutions stop at the intermediate Google URL — hop once more.
+  if (
+    resolvedUrl.includes("google.com/share.google") ||
+    resolvedUrl.includes("share.google/")
+  ) {
+    const secondHop = await unshorten(resolvedUrl);
+    if (isFinalArticleUrl(secondHop)) {
+      return secondHop;
+    }
+  }
+
+  throw new Error("Could not resolve Google share link");
 }
 
 /**
- * Cleans up a URL by removing query parameters
+ * Removes tracking query parameters from the final article URL.
  */
 function cleanUrl(url: string): string {
-  if (url.includes("?")) {
-    return url.substring(0, url.indexOf("?"));
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    if (url.includes("?")) {
+      return url.substring(0, url.indexOf("?"));
+    }
+    return url;
   }
-  return url;
 }
 
 /**
- * Main function to extract and process a URL from a query string
+ * Extract and resolve a readable article URL from shared text / path input.
  */
-export async function extractUrlFromQuery(query: string): Promise<string> {
-  if (!query) return "";
-
-  let processedUrl = extractHttpUrl(query);
-
-  // Handle search.app URLs
-  if (processedUrl.includes("search.app")) {
-    processedUrl = await processSearchAppUrl(processedUrl);
+export async function extractUrlFromQuery(
+  query: string
+): Promise<UrlExtractionResult> {
+  if (!query.trim()) {
+    return { status: "empty" };
   }
 
-  // Handle Google share URLs
-  if (processedUrl.includes("share.google")) {
-    processedUrl = await processGoogleShareUrl(processedUrl);
+  try {
+    let processedUrl = extractHttpUrl(query);
+
+    if (processedUrl.includes("search.app")) {
+      processedUrl = await processSearchAppUrl(processedUrl);
+    }
+
+    if (
+      processedUrl.includes("share.google") ||
+      /google\.com\/share\.google/i.test(processedUrl)
+    ) {
+      processedUrl = await processGoogleShareUrl(processedUrl);
+    }
+
+    if (!processedUrl.startsWith("http")) {
+      return {
+        status: "error",
+        message: "No share link found in the shared text",
+      };
+    }
+
+    if (
+      processedUrl.includes("share.google") ||
+      /google\.com\/share\.google/i.test(processedUrl)
+    ) {
+      return {
+        status: "error",
+        message: "Could not resolve Google share link",
+      };
+    }
+
+    return { status: "ok", url: cleanUrl(processedUrl) };
+  } catch (error) {
+    console.error("Error extracting URL:", error);
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Could not process share link",
+    };
   }
-
-  // Clean up the final URL
-  processedUrl = cleanUrl(processedUrl);
-
-  return processedUrl;
 }

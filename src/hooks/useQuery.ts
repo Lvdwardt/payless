@@ -1,54 +1,96 @@
 import { useEffect, useState } from "react";
 import { extractUrlFromQuery } from "../utils/urlExtractor";
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /**
- * Hook to extract and process URL queries from search parameters or path
+ * Build the raw share payload from PWA share-target params or the path.
+ * Android/Chrome often put the link in `url` and the title in `text`.
+ */
+function getRawShareQuery(): string {
+  const urlParams = new URLSearchParams(window.location.search);
+  const text = urlParams.get("text")?.trim() || "";
+  const sharedUrl = urlParams.get("url")?.trim() || "";
+  const title = urlParams.get("title")?.trim() || "";
+
+  const parts = [text, sharedUrl, title].filter(Boolean);
+  if (parts.length > 0) {
+    // Prefer a combined payload so titled shares still include the URL.
+    const unique = [...new Set(parts.map(safeDecode))];
+    return unique.join(" ");
+  }
+
+  const pathQuery = window.location.pathname.slice(1);
+  return pathQuery ? safeDecode(pathQuery) : "";
+}
+
+/**
+ * Hook to extract and process URL queries from search parameters or path.
  */
 export function useQuery() {
-  const [query, setQuery] = useState<string>("");
-  const [extractedUrl, setExtractedUrl] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [extractedUrl, setExtractedUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const processQuery = async () => {
-      // First check for 'text' parameter in URL search params
-      const urlParams = new URLSearchParams(window.location.search);
-      let rawQuery = urlParams.get("text") || "";
-
-      // If no 'text' parameter, check the pathname
-      if (!rawQuery) {
-        rawQuery = window.location.pathname.slice(1);
-      }
-
-      // Decode the raw query
-      if (rawQuery) {
-        rawQuery = decodeURIComponent(rawQuery);
-      }
+      const rawQuery = getRawShareQuery();
+      if (cancelled) return;
 
       setQuery(rawQuery);
 
-      // Extract URL from the query if it exists
-      if (rawQuery) {
-        try {
-          const url = await extractUrlFromQuery(rawQuery);
-          setExtractedUrl(url);
-        } catch (error) {
-          console.error("Error extracting URL:", error);
-          setExtractedUrl("");
-        }
+      if (!rawQuery) {
+        setIsLoading(false);
+        return;
       }
 
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 2000);
+      try {
+        const result = await extractUrlFromQuery(rawQuery);
+        if (cancelled) return;
+
+        if (result.status === "ok") {
+          setExtractedUrl(result.url);
+          setError(null);
+        } else if (result.status === "error") {
+          setExtractedUrl("");
+          setError(result.message);
+        } else {
+          setExtractedUrl("");
+          setError(null);
+        }
+      } catch (extractError) {
+        console.error("Error extracting URL:", extractError);
+        if (!cancelled) {
+          setExtractedUrl("");
+          setError("Could not process share link");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
     };
 
-    processQuery();
+    void processQuery();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {
     query,
     extractedUrl,
+    error,
     isLoading,
     hasQuery: query !== "",
     hasUrl: extractedUrl !== "",
