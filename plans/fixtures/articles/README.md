@@ -16,6 +16,8 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 | `volkskrant-venezuela.content.html` | Trimmed test fixture (`#CONTENT` + `#article-content`) |
 | `ft-musk.archive.html` / `ft-htsi.archive.html` | Full archive.is snapshots for FT samples |
 | `ft-musk.content.html` / `ft-htsi.content.html` | Trimmed fixtures (`#o-topper` + `#site-content`) |
+| `quotenet-jort-kelder.archive.html` | Full archive.is snapshot for the Quote sample URL |
+| `quotenet-jort-kelder.content.html` | Trimmed test fixture (`#CONTENT` + `#main-content`) |
 | `manifest.json` | URLs, snapshot IDs, structural notes |
 
 ## Product sample URLs
@@ -43,6 +45,11 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 5. **FT (Financial Times)**  
    - `https://www.ft.com/content/5ef14997-982e-4f03-8548-b5d67202623a` → `https://archive.is/iqyNt` (Musk / Roula Khalaf)  
    - `https://www.ft.com/content/85cbc4e1-24e4-4c36-8747-352258cfc038` → `https://archive.is/CXjOT` (HTSI / Jo Ellison)
+
+6. **Quote (Hearst)**  
+   `https://www.quotenet.nl/quote-500/a72610847/jort-kelder-niet-een-vrouw-op-de-quote-500-heeft-haar-eigen-geld-verdiend/`  
+   Snapshot: `https://archive.is/Wdu1v`  
+   H1: *Jort Kelder: ‘Niet één vrouw op de Quote 500 heeft haar eigen geld verdiend’*
 
 ## Structural findings (load-bearing for the extractor)
 
@@ -85,6 +92,15 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 - Byline via profile URLs like `www.ft.com/roula-khalaf` (not `/author/`).
 - Strip `| Financial Times` title suffix, `(opens a new window)` link labels, newsletter CTAs.
 - Legacy zap rules live in `src/data/sites/single/ft.ts`.
+
+### Quote (`quotenet-jort-kelder`)
+
+- Archive `#CONTENT` + publisher `#__next` / `#main-content`.
+- Class names are stripped in archive HTML — prefer ids (`#main-content`, `#piano-paywall-container`).
+- Dek is a large-type div after `<h1>`; Readability drops it (capture + re-inject).
+- Byline via `/author/` (`Lotte Verheul` in the sample).
+- Strip Piano stub, “Lees ook” related list, and `abonnement.quotenet.nl` shop cards.
+- Native hints live in `src/data/nativeSites.ts` (no legacy zap file yet).
 
 ## How to refresh a fixture
 

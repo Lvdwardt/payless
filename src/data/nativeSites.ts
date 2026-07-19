@@ -11,6 +11,7 @@ const TELEGRAAF_HOST = "www.telegraaf.nl";
 const TROUW_HOST = "www.trouw.nl";
 const VOLKSKRANT_HOST = "www.volkskrant.nl";
 const FT_HOST = "www.ft.com";
+const QUOTE_HOST = "www.quotenet.nl";
 
 /** DPG-family hosts that share the `#article-content` article root
  * (regional AD titles + Trouw + Volkskrant). Verified per-host via fixtures. */
@@ -27,6 +28,7 @@ export const nativeMigratedHosts: string[] = [
   ...dpgTemplateHosts,
   TELEGRAAF_HOST,
   FT_HOST,
+  QUOTE_HOST,
 ];
 
 const dpgHints: NativeSiteHints = {
@@ -50,6 +52,13 @@ const ftHints: NativeSiteHints = {
   removeSelectors: ["#site-navigation", "#site-footer"],
 };
 
+/** Quote (Hearst): article lives in `#main-content`; Piano paywall stub
+ * and related "Lees ook" trail the body inside the same main. */
+const quoteHints: NativeSiteHints = {
+  rootSelector: "#main-content, main",
+  removeSelectors: ["#piano-paywall-container"],
+};
+
 export function isNativeMigratedHost(host: string): boolean {
   return nativeMigratedHosts.includes(host);
 }
@@ -63,6 +72,9 @@ export function getNativeSiteHints(host: string): NativeSiteHints | undefined {
   }
   if (host === FT_HOST) {
     return ftHints;
+  }
+  if (host === QUOTE_HOST) {
+    return quoteHints;
   }
   return undefined;
 }

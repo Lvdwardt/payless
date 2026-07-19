@@ -174,6 +174,61 @@ function ensureLeadFigure(contentHtml: string, leadFigureHtml: string | null): s
   return `${leadFigureHtml}${contentHtml}`;
 }
 
+/**
+ * Quote (and similar Hearst templates) put the dek in a large-type div
+ * immediately after `<h1>`. Readability treats that header cluster as chrome
+ * and drops it — capture the text so we can re-inject after the lead figure.
+ */
+function captureDek(root: Element): string | null {
+  const h1 = root.querySelector("h1");
+  if (!h1) return null;
+
+  let el: Element | null = h1.nextElementSibling;
+  for (let i = 0; i < 6 && el; i += 1, el = el.nextElementSibling) {
+    if (
+      el.querySelector(
+        'a[href*="/author/"], a[href*="/auteur/"], address, time'
+      ) ||
+      el.tagName === "ADDRESS" ||
+      el.tagName === "TIME"
+    ) {
+      continue;
+    }
+    if (el.querySelector("img")) continue;
+
+    const text = el.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (text.length < 40 || text.length > 600) continue;
+
+    return `<p data-payless-dek="true">${escapeHtml(text)}</p>`;
+  }
+
+  return null;
+}
+
+function ensureDek(contentHtml: string, dekHtml: string | null): string {
+  if (!dekHtml) return contentHtml;
+
+  const plain = dekHtml.replace(/<[^>]+>/g, "").trim();
+  const needle = plain.slice(0, 48);
+  if (!needle) return contentHtml;
+
+  if (contentHtml.includes(needle)) {
+    // Readability sometimes keeps the dek as a plain <p> — mark it for styling.
+    if (contentHtml.includes('data-payless-dek="true"')) return contentHtml;
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return contentHtml.replace(
+      new RegExp(`(<p)(\\b[^>]*>\\s*${escaped})`),
+      `$1 data-payless-dek="true"$2`
+    );
+  }
+
+  if (/data-payless-lead="true"/.test(contentHtml)) {
+    return contentHtml.replace(/<\/figure>/i, `</figure>${dekHtml}`);
+  }
+
+  return `${dekHtml}${contentHtml}`;
+}
+
 /** True for DPG-style visually-hidden / screen-reader-only nodes
  * (`clip: rect(0,0,0,0); height: 1px; …`). Their text ("Dit artikel is
  * geschreven door", "Gepubliceerd op", …) must not leak into the body. */
@@ -400,6 +455,7 @@ function stripPublisherTitleSuffix(title: string): string {
     .replace(/\s*\|\s*de Volkskrant\s*$/i, "")
     .replace(/\s*\|\s*Trouw\s*$/i, "")
     .replace(/\s*\|\s*AD\.nl\s*$/i, "")
+    .replace(/\s*\|\s*Quote\s*$/i, "")
     .trim();
 }
 
@@ -444,7 +500,7 @@ function stripTruncatedSocialTitles(document: Document) {
 }
 
 const CHROME_HEADING =
-  /^(lees meer|meer lezen|leestips|gerelateerd|gerelateerde artikelen|volg .+ op sociale media|volg ons( op sociale media)?|promoted content|follow the topics in this article|comment guidelines|latest from .+)$/i;
+  /^(lees meer|lees ook|meer lezen|leestips|gerelateerd|gerelateerde artikelen|volg .+ op sociale media|volg ons( op sociale media)?|promoted content|follow the topics in this article|comment guidelines|latest from .+)$/i;
 
 /**
  * Drop end-of-article promo blocks ("Lees meer", "Volg … op sociale media")
@@ -492,9 +548,21 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function isAuthorHeadshotAlt(alt: string, byline: string): boolean {
+  const trimmed = alt.trim();
+  if (!trimmed) return false;
+  if (trimmed === byline) return true;
+  return new RegExp(
+    `^Headshot of\\s+${byline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+    "i"
+  ).test(trimmed);
+}
+
 /**
  * DPG (and similar) leave the author photo + "Schrijft over …" bio but drop
  * the visible name link. Re-insert the byline next to that bio block.
+ * Quote uses `alt="Headshot of {name}"` and already includes the name in the
+ * bio copy — still mark the cluster for reader styling.
  */
 function injectAuthorNameIntoBio(
   root: ReturnType<typeof parse>,
@@ -504,22 +572,34 @@ function injectAuthorNameIntoBio(
 
   const authorImg = root
     .querySelectorAll("img")
-    .find((img) => img.getAttribute("alt")?.trim() === byline);
+    .find((img) =>
+      isAuthorHeadshotAlt(img.getAttribute("alt") || "", byline)
+    );
   if (!authorImg) return;
 
   let cluster = authorImg.parentNode;
   for (let depth = 0; depth < 6 && cluster; depth += 1) {
     const text = cluster.textContent.replace(/\s+/g, " ").trim();
-    if (/Schrijft over\b|Writes about\b/i.test(text)) break;
+    if (
+      /Schrijft over\b|Writes about\b/i.test(text) ||
+      (text.includes(byline) && text.length > byline.length + 40)
+    ) {
+      break;
+    }
     cluster = cluster.parentNode;
   }
   if (!cluster || !("querySelectorAll" in cluster)) return;
 
-  // Skip if the name is already visible as real text (not only img alt).
+  if (!("setAttribute" in cluster)) return;
+  cluster.setAttribute("data-payless-author", "true");
+
+  // Skip name injection if the name is already visible as real text
+  // (not only img alt) — Quote bios start with "{Name} (year) is …".
   const hasVisibleName = [...cluster.querySelectorAll("a, p, span, strong")].some(
     (el) => {
       if (el.querySelector("img")) return false;
-      return el.textContent.replace(/\s+/g, " ").trim() === byline;
+      const text = el.textContent.replace(/\s+/g, " ").trim();
+      return text === byline || text.startsWith(`${byline} `);
     }
   );
   if (hasVisibleName) return;
@@ -535,9 +615,6 @@ function injectAuthorNameIntoBio(
     bio.rawTagName === "span" && bio.parentNode?.rawTagName === "p"
       ? bio.parentNode
       : bio;
-
-  if (!("setAttribute" in cluster)) return;
-  cluster.setAttribute("data-payless-author", "true");
 
   const meta = parse(
     `<div data-payless-author-meta="true"><p data-payless-author-name="true"><strong>${escapeHtml(byline)}</strong></p></div>`
@@ -592,17 +669,42 @@ function removePromoLinks(root: ReturnType<typeof parse>) {
   root.querySelectorAll("a").forEach((anchor) => {
     const href = anchor.getAttribute("href") || "";
     const text = anchor.textContent.replace(/\s+/g, " ").trim();
+    const aria = anchor.getAttribute("aria-label") || "";
     const isGoogleFavorite =
       /google\.com\/preferences\/source/i.test(href) ||
       /google-favoriet|google favoriet/i.test(text) ||
       /^maak ons je google/i.test(text);
+    // Quote end-of-article shop cards ("Shop bij quotenet.nl …").
+    const isShopPromo =
+      /abonnement\.quotenet\.nl/i.test(href) || /^Shop bij\b/i.test(aria);
 
-    if (!isGoogleFavorite) return;
+    if (!isGoogleFavorite && !isShopPromo) return;
 
-    const block =
+    let block =
       anchor.closest("p") ||
       anchor.closest("div") ||
       anchor;
+
+    // Prefer a slightly larger wrapper when the promo is a product card.
+    if (isShopPromo) {
+      let node: typeof block | null = block;
+      for (let depth = 0; depth < 4 && node; depth += 1) {
+        const parent = node.parentNode;
+        if (!parent || !("rawTagName" in parent) || !parent.rawTagName) break;
+        const parentText = parent.textContent.replace(/\s+/g, " ").trim();
+        if (parentText.length > 500) break;
+        if (
+          /Top 100|bestelt u hier|Shop bij/i.test(parentText) &&
+          parentText.length < 500
+        ) {
+          block = parent as typeof block;
+          node = parent as typeof block;
+          continue;
+        }
+        break;
+      }
+    }
+
     block.remove();
   });
 }
@@ -816,6 +918,8 @@ export async function extractNativeArticle(
   removeRelatedTeasers(clone);
   // Capture lead dims from archive min-width/min-height styles first…
   const leadFigureHtml = captureLeadFigure(clone);
+  // Quote-style dek sits beside the h1 and is dropped by Readability.
+  const dekHtml = captureDek(clone);
   // …then normalize images so width/height survive Readability for CLS.
   stabilizeImages(clone);
   removeEmbedPlaceholders(clone);
@@ -869,7 +973,8 @@ export async function extractNativeArticle(
 
   const byline = hintByline || parsed.byline?.trim() || undefined;
   const withLead = ensureLeadFigure(parsed.content, leadFigureHtml);
-  const rewritten = rewriteRelativeUrls(withLead, baseURL);
+  const withDek = ensureDek(withLead, dekHtml);
+  const rewritten = rewriteRelativeUrls(withDek, baseURL);
   const cleaned = cleanExtractedHtml(rewritten, byline);
   const sanitized = normalizeWhitespace(
     DOMPurify.sanitize(cleaned, {
@@ -878,6 +983,7 @@ export async function extractNativeArticle(
         "data-payless-author-name",
         "data-payless-author-meta",
         "data-payless-lead",
+        "data-payless-dek",
         "data-payless-aside",
       ],
     })
