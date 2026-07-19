@@ -56,6 +56,9 @@ const resources = {
       "reader.nativeFallbackNote":
         "This site isn't available in Native mode yet, so we're showing the Classic reader instead.",
       "reader.bylinePrefix": "By",
+      "reader.fontSizeLabel": "Font size",
+      "reader.fontSizeDecrease": "Decrease font size",
+      "reader.fontSizeIncrease": "Increase font size",
     },
   },
   nl: {
@@ -110,6 +113,9 @@ const resources = {
       "reader.nativeFallbackNote":
         "Deze site is nog niet beschikbaar in Native-modus, dus we tonen de klassieke lezer.",
       "reader.bylinePrefix": "Door",
+      "reader.fontSizeLabel": "Tekstgrootte",
+      "reader.fontSizeDecrease": "Tekst verkleinen",
+      "reader.fontSizeIncrease": "Tekst vergroten",
     },
   },
 };
