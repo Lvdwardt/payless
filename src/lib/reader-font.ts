@@ -1,5 +1,5 @@
 /** Body text sizes for the native reader (px). */
-export const READER_FONT_SIZES = [14, 16, 18, 20, 22] as const;
+export const READER_FONT_SIZES = [12, 14, 16, 18, 20, 22] as const;
 
 export type ReaderFontSize = (typeof READER_FONT_SIZES)[number];
 

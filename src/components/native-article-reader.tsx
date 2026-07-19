@@ -115,15 +115,16 @@ export function NativeArticleReader({
       </div>
 
       <article
-        className="pb-12 [&_p]:my-4 [&_p]:leading-relaxed [&_figure]:my-6 [&_figure]:text-center [&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:text-muted-foreground [&_img]:mx-auto [&_img]:block [&_img]:h-auto [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_picture]:mx-auto [&_picture]:block [&_picture]:w-auto [&_picture]:max-w-full [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-semibold [&_h4]:mt-6 [&_h4]:text-lg [&_h4]:font-semibold [&_a]:text-primary [&_a]:underline [&_section]:m-0 [&_section]:p-0 [&_[data-payless-dek]]:text-[1.15em] [&_[data-payless-dek]]:leading-snug [&_[data-payless-dek]]:text-foreground/90 [&_[data-payless-aside]]:my-6 [&_[data-payless-aside]]:rounded-lg [&_[data-payless-aside]]:border [&_[data-payless-aside]]:border-border/60 [&_[data-payless-aside]]:bg-muted/40 [&_[data-payless-aside]]:px-4 [&_[data-payless-aside]]:py-3 [&_[data-payless-aside]]:text-[0.92em] [&_[data-payless-aside]]:leading-snug [&_[data-payless-aside]_p]:my-2 [&_[data-payless-author]]:my-6 [&_[data-payless-author]]:flex [&_[data-payless-author]]:items-center [&_[data-payless-author]]:gap-3 [&_[data-payless-author]]:text-left [&_[data-payless-author]_figure]:my-0 [&_[data-payless-author]_img]:m-0 [&_[data-payless-author]_img]:h-12 [&_[data-payless-author]_img]:w-12 [&_[data-payless-author]_img]:rounded-full [&_[data-payless-author]_img]:object-cover [&_[data-payless-author-meta]_p]:my-0 [&_[data-payless-author-name]]:text-base [&_[data-payless-author-name]]:font-medium [&_[data-payless-author-name]]:text-foreground [&_[data-payless-author-meta]_p:not([data-payless-author-name])]:text-sm [&_[data-payless-author-meta]_p:not([data-payless-author-name])]:text-muted-foreground"
+        className="pb-12 [&_p]:my-4 [&_p]:leading-relaxed [&_figure]:my-6 [&_figure]:text-center [&_figcaption]:mt-2 [&_figcaption]:text-[0.875em] [&_figcaption]:text-muted-foreground [&_img]:mx-auto [&_img]:block [&_img]:h-auto [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_picture]:mx-auto [&_picture]:block [&_picture]:w-auto [&_picture]:max-w-full [&_h2]:mt-8 [&_h2]:text-[1.25em] [&_h2]:font-semibold [&_h4]:mt-6 [&_h4]:text-[1.125em] [&_h4]:font-semibold [&_a]:text-primary [&_a]:underline [&_section]:m-0 [&_section]:p-0 [&_[data-payless-dek]]:text-[1.15em] [&_[data-payless-dek]]:leading-snug [&_[data-payless-dek]]:text-foreground/90 [&_[data-payless-aside]]:my-6 [&_[data-payless-aside]]:rounded-lg [&_[data-payless-aside]]:border [&_[data-payless-aside]]:border-border/60 [&_[data-payless-aside]]:bg-muted/40 [&_[data-payless-aside]]:px-4 [&_[data-payless-aside]]:py-3 [&_[data-payless-aside]]:text-[0.92em] [&_[data-payless-aside]]:leading-snug [&_[data-payless-aside]_p]:my-2 [&_[data-payless-author]]:my-6 [&_[data-payless-author]]:flex [&_[data-payless-author]]:items-center [&_[data-payless-author]]:gap-3 [&_[data-payless-author]]:text-left [&_[data-payless-author]_figure]:my-0 [&_[data-payless-author]_img]:m-0 [&_[data-payless-author]_img]:h-12 [&_[data-payless-author]_img]:w-12 [&_[data-payless-author]_img]:rounded-full [&_[data-payless-author]_img]:object-cover [&_[data-payless-author-meta]_p]:my-0 [&_[data-payless-author-name]]:text-[1em] [&_[data-payless-author-name]]:font-medium [&_[data-payless-author-name]]:text-foreground [&_[data-payless-author-meta]_p:not([data-payless-author-name])]:text-[0.875em] [&_[data-payless-author-meta]_p:not([data-payless-author-name])]:text-muted-foreground"
         role="main"
         aria-label="Article content"
+        style={{ fontSize: `${fontSize}px` }}
       >
-        <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground text-pretty wrap-break-word">
+        <h1 className="font-serif text-[1.875em] font-bold tracking-tight text-foreground text-pretty wrap-break-word">
           {article.title}
         </h1>
         {article.byline ? (
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="mt-3 text-[0.875em] text-muted-foreground">
             {t("reader.bylinePrefix")}{" "}
             <span className="font-medium text-foreground">{article.byline}</span>
           </p>
@@ -131,7 +132,6 @@ export function NativeArticleReader({
         <div
           ref={bodyRef}
           className="mt-6"
-          style={{ fontSize: `${fontSize}px` }}
           dangerouslySetInnerHTML={{
             __html: prepareContentHtml(article.content),
           }}
