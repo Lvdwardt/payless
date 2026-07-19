@@ -6,10 +6,10 @@
     "captcha": false,
     "bytes": 409710,
     "titles": [
-      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar óók met Berlinda (55) | Nieuws | AD.nl"
+      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar \u00f3\u00f3k met Berlinda (55) | Nieuws | AD.nl"
     ],
     "h1s": [
-      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar óók met Berlinda (55)"
+      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar \u00f3\u00f3k met Berlinda (55)"
     ],
     "interesting_ids": [
       "CONTENT",
@@ -23,7 +23,7 @@
       "Body copy lives in styled divs (font-size:18px), not <p> tags",
       "Lead is first bold 18px block after h1",
       "Hero figure + figcaption present; related-news cards appear after article body",
-      "JSON-LD NewsArticle often stripped/broken in archive HTML — do not rely on it",
+      "JSON-LD NewsArticle often stripped/broken in archive HTML \u2014 do not rely on it",
       "Chrome to strip: Premium badge SVG, author avatar chrome OK to keep byline text, related articles, embeds"
     ],
     "content_bytes": 118665
@@ -41,7 +41,7 @@
       "Gardameer noodweer en hagelbuien: zo beschermen Nederlanders hun auto | De Telegraaf"
     ],
     "h1s": [
-      "Ondanks hagel en noodweer blijft Gardameer populair: ’We laten onze vakantie niet verpesten’"
+      "Ondanks hagel en noodweer blijft Gardameer populair: \u2019We laten onze vakantie niet verpesten\u2019"
     ],
     "interesting_ids": [
       "CONTENT",
@@ -77,9 +77,9 @@
     "content_bytes": 101179,
     "notes": [
       "DPG Media template shared with AD (www.trouw.nl). Snapshot https://archive.is/0bjdC",
-      "Article root: #article-content inside archive #CONTENT — same hints as DPG regionals",
+      "Article root: #article-content inside archive #CONTENT \u2014 same hints as DPG regionals",
       "Byline via /auteur/Cindy Cloin",
-      "og:title truncated with …; prefer h1",
+      "og:title truncated with \u2026; prefer h1",
       "Not in src/data/sites/multiple/dpg.ts (legacy rules live in single/trouw.ts) but same article chrome"
     ]
   },
@@ -90,10 +90,10 @@
     "captcha": false,
     "bytes": 351124,
     "titles": [
-      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: ‘De Amerikanen verraden ons nu ook’ | de Volkskrant"
+      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: \u2018De Amerikanen verraden ons nu ook\u2019 | de Volkskrant"
     ],
     "h1s": [
-      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: ‘De Amerikanen verraden ons nu ook’"
+      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: \u2018De Amerikanen verraden ons nu ook\u2019"
     ],
     "interesting_ids": [
       "CONTENT",
@@ -116,10 +116,10 @@
     "captcha": false,
     "bytes": 590008,
     "titles": [
-      "Elon Musk: ‘Aren’t you entertained?’ | Financial Times"
+      "Elon Musk: \u2018Aren\u2019t you entertained?\u2019 | Financial Times"
     ],
     "h1s": [
-      "Elon Musk: ‘Aren’t you entertained?’"
+      "Elon Musk: \u2018Aren\u2019t you entertained?\u2019"
     ],
     "interesting_ids": [
       "CONTENT",
@@ -142,10 +142,10 @@
     "captcha": false,
     "bytes": 529763,
     "titles": [
-      "HTSI editor’s letter: the pull of Country | Financial Times"
+      "HTSI editor\u2019s letter: the pull of Country | Financial Times"
     ],
     "h1s": [
-      "HTSI editor’s letter: the pull of Country"
+      "HTSI editor\u2019s letter: the pull of Country"
     ],
     "interesting_ids": [
       "CONTENT",
@@ -158,6 +158,35 @@
       "FT How To Spend It editor letter. Snapshot https://archive.is/CXjOT",
       "Byline Jo Ellison via www.ft.com/jo-ellison",
       "Strip closing newsletter CTA"
+    ]
+  },
+  "quotenet-jort-kelder": {
+    "original": "https://www.quotenet.nl/quote-500/a72610847/jort-kelder-niet-een-vrouw-op-de-quote-500-heeft-haar-eigen-geld-verdiend/",
+    "snapshot": "https://archive.is/Wdu1v",
+    "status": 200,
+    "captcha": false,
+    "bytes": 141209,
+    "titles": [
+      "Jort Kelder: \u2018Niet \u00e9\u00e9n vrouw op de Quote 500 heeft haar eigen geld verdiend\u2019"
+    ],
+    "h1s": [
+      "Jort Kelder: \u2018Niet \u00e9\u00e9n vrouw op de Quote 500 heeft haar eigen geld verdiend\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "__next",
+      "main-content",
+      "piano-paywall-container"
+    ],
+    "content_fixture": "quotenet-jort-kelder.content.html",
+    "content_bytes": 40768,
+    "notes": [
+      "Hearst/Quote (www.quotenet.nl). Snapshot https://archive.is/Wdu1v",
+      "Article root: #main-content inside archive #CONTENT (class names stripped in archive HTML)",
+      "Dek is font-size:26px div after h1 \u2014 Readability drops it; capture+reinject",
+      "Byline via /author/lotte-verheul (Lotte Verheul)",
+      "Body in Lora 18px styled divs; #piano-paywall-container empty in archive",
+      "Chrome: Lees ook related list, abonnement.quotenet.nl shop promo, author headshot bio"
     ]
   }
 }

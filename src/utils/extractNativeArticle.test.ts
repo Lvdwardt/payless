@@ -306,6 +306,82 @@ describe("extractNativeArticle", () => {
     expect(result.article.textContent).toMatch(/blarenpost[\s\S]*Na tien minuten/);
   });
 
+  test("extracts the Quote (Hearst) fixture into a structured article", async () => {
+    const html = readFixture("quotenet-jort-kelder.content.html");
+
+    const result = await extractNativeArticle(html, {
+      host: "www.quotenet.nl",
+      baseURL: "https://archive.is/Wdu1v",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    expect(result.article.title).toContain("Jort Kelder");
+    expect(result.article.title).toContain("Quote 500");
+    expect(result.article.title).not.toMatch(/\|\s*Quote\s*$/i);
+    expect(result.article.byline).toBe("Lotte Verheul");
+    expect(result.article.length).toBeGreaterThan(200);
+    // Dek after h1 must survive (Readability drops the header cluster).
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.textContent).toContain("Heilige Huisjes");
+    expect(result.article.textContent).toContain("loonkloof");
+    expect(result.article.images.length).toBeGreaterThan(0);
+    for (const image of result.article.images) {
+      expect(image.src.startsWith("https://archive.is/Wdu1v/")).toBe(true);
+    }
+    expect(result.article.content).toContain(
+      "8287cb4e03106f8f65119f6f0ad090ef90b8f1ce"
+    );
+    // Related list + shop promo must not leak; author bio may stay.
+    expect(result.article.content).not.toContain("Lees ook");
+    expect(result.article.content).not.toContain("abonnement.quotenet.nl");
+    expect(result.article.content).not.toContain("piano-paywall");
+    expect(result.article.content).toContain('data-payless-author="true"');
+    expect(result.article.content).toMatch(/Lotte Verheul[\s\S]*chef online/i);
+  });
+
+  test("re-injects Quote dek and strips shop promo cards", async () => {
+    const paragraphs = Array.from(
+      { length: 6 },
+      (_, i) =>
+        `<p>Paragraaf ${i} met genoeg tekst over de Quote 500 om Readability te overtuigen dat dit een echt artikel is.</p>`
+    ).join("");
+
+    const html = `<!DOCTYPE html><html><body><div id="CONTENT">
+      <main id="main-content">
+        <h1>Jort Kelder: testkop over de Quote 500</h1>
+        <div style="font-size:26px">Jort Kelder schopte tegen het heilige huisje van de loonkloof. Waar of niet waar?</div>
+        <address><a href="https://www.quotenet.nl/author/219560/lotte-verheul/">Lotte Verheul</a></address>
+        ${paragraphs}
+        <div>
+          <p>Bestelt u hier:</p>
+          <a aria-label="Shop bij quotenet.nl Voor Top 100 Jonge miljonairs 2026" href="https://abonnement.quotenet.nl/selfmade">
+            <img alt="Top 100 Jonge miljonairs 2026" src="/shop.jpg" />
+          </a>
+        </div>
+        <h2>Lees ook</h2>
+        <ul><li><a href="https://www.quotenet.nl/other/">Ander artikel over de Quote 500 mannen</a></li></ul>
+      </main>
+    </div></body></html>`;
+
+    const result = await extractNativeArticle(html, {
+      host: "www.quotenet.nl",
+      baseURL: "https://archive.is/Wdu1v",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    expect(result.article.byline).toBe("Lotte Verheul");
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.textContent).toContain("heilige huisje");
+    expect(result.article.content).not.toContain("abonnement.quotenet.nl");
+    expect(result.article.content).not.toContain("shop.jpg");
+    expect(result.article.content).not.toContain("Lees ook");
+    expect(result.article.content).not.toContain("Ander artikel");
+  });
+
   test("extracts the Telegraaf (Mediahuis) fixture into a structured article", async () => {
     const html = readFixture("telegraaf-gardameer.content.html");
 
