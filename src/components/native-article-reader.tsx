@@ -1,15 +1,19 @@
 import { useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { trackEvent } from "@/hooks/useUmami";
 import { useArchiveLinkInterception } from "@/hooks/useArchiveLinkInterception";
+import { useReaderFontSize } from "@/hooks/useReaderFontSize";
+import {
+  READER_FONT_SIZES,
+  stepReaderFontSize,
+} from "@/lib/reader-font";
 import type { NativeArticle } from "@/types/article";
 
 interface NativeArticleReaderProps {
   article: NativeArticle;
   articleLink: string;
 }
-
-const BASE_FONT_SIZE_PX = 18;
 
 /**
  * Gotham draws U+00A0 (NBSP) with a ~450px advance — it looks like a hole in
@@ -32,6 +36,7 @@ export function NativeArticleReader({
   articleLink,
 }: NativeArticleReaderProps) {
   const { t } = useTranslation();
+  const [fontSize, setFontSize] = useReaderFontSize();
   const contentRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +68,9 @@ export function NativeArticleReader({
     }
   };
 
+  const minFontSize = READER_FONT_SIZES[0];
+  const maxFontSize = READER_FONT_SIZES[READER_FONT_SIZES.length - 1];
+
   return (
     <div className="mx-auto max-w-2xl px-4" ref={contentRef}>
       <div className="flex justify-between items-center gap-4 py-4">
@@ -75,6 +83,35 @@ export function NativeArticleReader({
         >
           View on archive.today
         </a>
+
+        <div
+          role="group"
+          aria-label={t("reader.fontSizeLabel")}
+          className="inline-flex items-center rounded-md border border-border p-0.5"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 px-0"
+            disabled={fontSize <= minFontSize}
+            onClick={() => setFontSize(stepReaderFontSize(fontSize, -1))}
+            aria-label={t("reader.fontSizeDecrease")}
+          >
+            <span className="text-[11px] font-semibold leading-none">A</span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 px-0"
+            disabled={fontSize >= maxFontSize}
+            onClick={() => setFontSize(stepReaderFontSize(fontSize, 1))}
+            aria-label={t("reader.fontSizeIncrease")}
+          >
+            <span className="text-[15px] font-semibold leading-none">A</span>
+          </Button>
+        </div>
       </div>
 
       <article
@@ -94,7 +131,7 @@ export function NativeArticleReader({
         <div
           ref={bodyRef}
           className="mt-6"
-          style={{ fontSize: `${BASE_FONT_SIZE_PX}px` }}
+          style={{ fontSize: `${fontSize}px` }}
           dangerouslySetInnerHTML={{
             __html: prepareContentHtml(article.content),
           }}
