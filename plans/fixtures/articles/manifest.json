@@ -188,5 +188,35 @@
       "Body in Lora 18px styled divs; #piano-paywall-container empty in archive",
       "Chrome: Lees ook related list, abonnement.quotenet.nl shop promo, author headshot bio"
     ]
+  },
+  "nt-merwedebrug": {
+    "original": "https://www.nt.nl/wegvervoer/2026/07/27/tientallen-trucks-negeren-verbod-op-merwedebrug-en-tikken-500-euro-af/",
+    "snapshot": "https://archive.is/0Esa5",
+    "status": 200,
+    "captcha": false,
+    "bytes": 817773,
+    "titles": [
+      "Tientallen trucks negeren verbod op Merwedebrug en tikken 500 euro af | NT"
+    ],
+    "h1s": [],
+    "interesting_ids": [
+      "CONTENT",
+      "header",
+      "main",
+      "loop-related-wegvervoer",
+      "freebie-email"
+    ],
+    "content_fixture": "nt-merwedebrug.content.html",
+    "content_bytes": 203179,
+    "notes": [
+      "NT / Nieuwsblad Transport (www.nt.nl, ProMedia). Snapshot https://archive.is/0Esa5",
+      "Article root: first <article> under main#main inside archive #CONTENT",
+      "No <h1> anywhere: headline is a 40px <h2> in article > header (titleSelector hint promotes it)",
+      "Kicker is a 14.4px uppercase div between headline and dek; dek is a 20px bold div",
+      "Byline is a mailto: link with the name in <strong> plus 'Stuur een e-mail' (bylineSelector hint)",
+      "Body in 20px styled divs with real <h2> subheads; hero <figure> + figcaption",
+      "Chrome: subscription wall ('Abonneer nu ...' / 'Kies uw abonnement' / 'Dit artikel gratis lezen?') ends the body, inline 'Lees ook' aside, article > footer topics + share rows, #loop-related-* trail",
+      "Sidebar <aside> (Meest gelezen + hCaptcha newsletter form) removed from the content fixture - out of scope for the article root"
+    ]
   }
 }

@@ -382,6 +382,110 @@ describe("extractNativeArticle", () => {
     expect(result.article.content).not.toContain("Ander artikel");
   });
 
+  test("extracts the NT fixture into a structured article", async () => {
+    const html = readFixture("nt-merwedebrug.content.html");
+
+    const result = await extractNativeArticle(html, {
+      host: "www.nt.nl",
+      baseURL: "https://archive.is/0Esa5",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    // NT marks the headline as <h2>; the snapshot has no <h1> at all.
+    expect(result.article.title).toBe(
+      "Tientallen trucks negeren verbod op Merwedebrug en tikken 500 euro af"
+    );
+    expect(result.article.title).not.toMatch(/\|\s*NT\s*$/);
+    // Byline is a bare mailto: link, name in <strong>, "Stuur een e-mail" beside it.
+    expect(result.article.byline).toBe("Roel van der Maas");
+    expect(result.article.length).toBeGreaterThan(200);
+    expect(result.article.textContent).toContain("Rijkswaterstaat");
+    expect(result.article.textContent).toContain("65.000 euro per uur");
+    // Dek sits in the <header> cluster Readability drops.
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.content).toContain("Wie met z’n truck");
+    // Body subheads stay.
+    expect(result.article.content).toContain("<h2>Niet voor niks</h2>");
+    expect(result.article.images.length).toBeGreaterThan(0);
+    for (const image of result.article.images) {
+      expect(image.src.startsWith("https://archive.is/0Esa5/")).toBe(true);
+    }
+    expect(result.article.content).toContain(
+      "f788f3b912188b82295c4db6c799fa5716bb4726"
+    );
+    // Subscription wall that ends the archived body must not leak.
+    expect(result.article.content).not.toContain("Abonneer nu");
+    expect(result.article.content).not.toContain("Kies uw abonnement");
+    expect(result.article.content).not.toContain("gratis een artikel per maand");
+    expect(result.article.content).not.toContain("ntlogin");
+    // Related trail, inline "Lees ook" and share/topic chrome must not leak.
+    expect(result.article.content).not.toContain("Overig nieuws");
+    expect(result.article.content).not.toContain("Zeeuwse drankhandel");
+    expect(result.article.content).not.toContain("Lees ook");
+    expect(result.article.content).not.toContain("Onderwerpen");
+    expect(result.article.content).not.toContain("WhatsApp");
+  });
+
+  test("promotes the NT h2 headline and strips the subscription wall", async () => {
+    const paragraphs = Array.from(
+      { length: 6 },
+      (_, i) =>
+        `<p>Alinea ${i} met genoeg tekst over het vrachtwagenverbod op de Merwedebrug om Readability te overtuigen.</p>`
+    ).join("");
+
+    const html = `<!DOCTYPE html><html><body><div id="CONTENT"><main id="main">
+      <article>
+        <header>
+          <h2>Tientallen trucks negeren verbod op de Merwedebrug</h2>
+          <div>rustiger dan normaal</div>
+          <div>Wie met z’n truck over de Merwedebrug rijdt, krijgt sinds zaterdag een boete van maar liefst 500 euro.</div>
+          <div>
+            <a href="mailto:roel.van.der.maas@promedia.nl"><strong>Roel van der Maas</strong><span>Stuur een e-mail</span></a>
+            <time datetime="2026-07-27T12:01:24">27 juli 2026 12:01</time>
+          </div>
+        </header>
+        ${paragraphs}
+        <div>
+          <div>
+            <h2>Abonneer nu voor toegang tot al het nieuws</h2>
+            <p>Heeft u al een abonnement? <a href="https://www.nt.nl/ntlogin/">Log in</a>.</p>
+          </div>
+          <div>
+            <h3>Kies uw abonnement</h3>
+            <p>Digitaal, €39,50 per maand per gebruiker.</p>
+          </div>
+        </div>
+      </article>
+      <div id="loop-related-wegvervoer">
+        <h2>Overig nieuws in "Wegvervoer"</h2>
+        <article><a href="https://www.nt.nl/wegvervoer/other/">Vervoerders teleurgesteld in de overheid na afsluiten Merwedebrug</a></article>
+      </div>
+    </main></div></body></html>`;
+
+    const result = await extractNativeArticle(html, {
+      host: "www.nt.nl",
+      baseURL: "https://archive.is/0Esa5",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    expect(result.article.title).toBe(
+      "Tientallen trucks negeren verbod op de Merwedebrug"
+    );
+    expect(result.article.byline).toBe("Roel van der Maas");
+    expect(result.article.content).not.toContain("Stuur een e-mail");
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.textContent).toContain("maar liefst 500 euro");
+    expect(result.article.content).not.toContain("Abonneer nu");
+    expect(result.article.content).not.toContain("Kies uw abonnement");
+    expect(result.article.content).not.toContain("ntlogin");
+    expect(result.article.content).not.toContain("Overig nieuws");
+    expect(result.article.content).not.toContain("Vervoerders teleurgesteld");
+  });
+
   test("extracts the Telegraaf (Mediahuis) fixture into a structured article", async () => {
     const html = readFixture("telegraaf-gardameer.content.html");
 

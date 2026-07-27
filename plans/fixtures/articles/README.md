@@ -18,6 +18,8 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 | `ft-musk.content.html` / `ft-htsi.content.html` | Trimmed fixtures (`#o-topper` + `#site-content`) |
 | `quotenet-jort-kelder.archive.html` | Full archive.is snapshot for the Quote sample URL |
 | `quotenet-jort-kelder.content.html` | Trimmed test fixture (`#CONTENT` + `#main-content`) |
+| `nt-merwedebrug.archive.html` | Full archive.is snapshot for the NT sample URL |
+| `nt-merwedebrug.content.html` | Trimmed test fixture (`#CONTENT` + `main#main`, sidebar `<aside>` dropped) |
 | `manifest.json` | URLs, snapshot IDs, structural notes |
 
 ## Product sample URLs
@@ -50,6 +52,11 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
    `https://www.quotenet.nl/quote-500/a72610847/jort-kelder-niet-een-vrouw-op-de-quote-500-heeft-haar-eigen-geld-verdiend/`  
    Snapshot: `https://archive.is/Wdu1v`  
    H1: *Jort Kelder: ‘Niet één vrouw op de Quote 500 heeft haar eigen geld verdiend’*
+
+7. **NT (Nieuwsblad Transport, ProMedia)**  
+   `https://www.nt.nl/wegvervoer/2026/07/27/tientallen-trucks-negeren-verbod-op-merwedebrug-en-tikken-500-euro-af/`  
+   Snapshot: `https://archive.is/0Esa5`  
+   Headline (an `<h2>`, not `<h1>`): *Tientallen trucks negeren verbod op Merwedebrug en tikken 500 euro af*
 
 ## Structural findings (load-bearing for the extractor)
 
@@ -101,6 +108,17 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 - Byline via `/author/` (`Lotte Verheul` in the sample).
 - Strip Piano stub, “Lees ook” related list, and `abonnement.quotenet.nl` shop cards.
 - Native hints live in `src/data/nativeSites.ts` (no legacy zap file yet).
+
+### NT (`nt-merwedebrug`)
+
+- Archive `#CONTENT` + publisher `main#main`; the story is the **first** `<article>` in that `main`.
+- **No `<h1>` in the snapshot at all** — the headline is a 40px `<h2>` inside `article > header`. Hence the `titleSelector` hint, which promotes it to `<h1>` so the title/dek/Readability heuristics keep working.
+- A short uppercase kicker div ("rustiger dan normaal") sits between headline and dek; the dek is the 20px bold div after it.
+- Byline is a `mailto:` link — no `/auteur/` or `/author/` profile URL — with the name in `<strong>` next to a "Stuur een e-mail" span. Hence the `bylineSelector` hint.
+- Body is 20px styled divs with real `<h2>` subheads; hero `<figure>` + `<figcaption>`.
+- Chrome to strip: the subscription wall that ends the archived body ("Abonneer nu …", "Kies uw abonnement", "Dit artikel gratis lezen?" — handled via `CHROME_HEADING`), the inline "Lees ook" aside, `article > footer` (topics + share row), and the `#loop-related-*` "Overig nieuws in …" trail.
+- The sidebar `<aside>` carries an hCaptcha newsletter form; its `h-captcha-response`/`g-recaptcha-response` textareas are exactly the snapshot debris `archiveDetect` is written to ignore.
+- No legacy zap file — native hints only.
 
 ## How to refresh a fixture
 
