@@ -28,13 +28,22 @@ in-memory unless `COOKIE_STORE_PATH` is set.
 
 Runs as its **own** Coolify resource — does not touch other services on the box.
 
-1. **New Resource → Docker Compose**, point at this repo + `docker-compose.archive-proxy.yml`.
+1. **New Resource → Docker Compose**, point at this repo + `docker-compose.archive-proxy.yml`,
+   branch **`deploy/archive-proxy`** (not `main` — see [CLAUDE.md](CLAUDE.md#branches--read-this-first)).
 2. **Env vars:** none required — `VNC_INTERNAL=1` is in the compose file. No
    `VNC_PASSWORD`, no `PUBLIC_VNC_URL`.
 3. **One domain → one port** (Coolify issues TLS):
    - `archive.fly-n.nl` → `8788` (proxy API **and** same-origin noVNC)
    - Do **not** map `archive-vnc.*` — there is no separate VNC domain.
-4. **Deploy.** `git push` → CI/Coolify builds the image.
+4. **Deploy.** Land the change on `main`, then fast-forward the release pointer:
+
+   ```bash
+   git push origin main:deploy/archive-proxy
+   ```
+
+   Coolify sees the branch move and rebuilds. Pushing to `main` alone only
+   redeploys the Vercel frontend — the VPS stays untouched (and its warm cookie
+   jar survives).
 
 ### noVNC lockdown (no password, gated to Payless)
 
