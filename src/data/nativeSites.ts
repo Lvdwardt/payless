@@ -5,6 +5,12 @@ export type NativeSiteHints = {
   rootSelector?: string;
   /** Selectors removed from a clone of the root before Readability runs. */
   removeSelectors?: string[];
+  /** Headline element for publishers that don't mark it as `<h1>`. Promoted to
+   * `<h1>` before extraction (see `promoteTitleHeading`). */
+  titleSelector?: string;
+  /** Byline element for publishers whose author link isn't an `/auteur/`-style
+   * profile URL. Text is used verbatim, so point it at the name itself. */
+  bylineSelector?: string;
 };
 
 const TELEGRAAF_HOST = "www.telegraaf.nl";
@@ -12,6 +18,7 @@ const TROUW_HOST = "www.trouw.nl";
 const VOLKSKRANT_HOST = "www.volkskrant.nl";
 const FT_HOST = "www.ft.com";
 const QUOTE_HOST = "www.quotenet.nl";
+const NT_HOST = "www.nt.nl";
 
 /** DPG-family hosts that share the `#article-content` article root
  * (regional AD titles + Trouw + Volkskrant). Verified per-host via fixtures. */
@@ -29,6 +36,7 @@ export const nativeMigratedHosts: string[] = [
   TELEGRAAF_HOST,
   FT_HOST,
   QUOTE_HOST,
+  NT_HOST,
 ];
 
 const dpgHints: NativeSiteHints = {
@@ -59,6 +67,22 @@ const quoteHints: NativeSiteHints = {
   removeSelectors: ["#piano-paywall-container"],
 };
 
+/** NT (Nieuwsblad Transport): the story is the first `<article>` under
+ * `main#main` — the "Overig nieuws in …" trail and the "Meest gelezen" sidebar
+ * are separate `article`/`aside` siblings in the same `main`. The headline is an
+ * `<h2>` (no `<h1>` anywhere) and the byline is a bare `mailto:` link. */
+const ntHints: NativeSiteHints = {
+  // Single selector on purpose: `querySelector` picks the first match in
+  // document order, not the first selector, so listing `main#main` as a
+  // fallback here would always win over the article. No match falls back to
+  // `#CONTENT` (see `extractNativeArticle`).
+  rootSelector: "main#main article",
+  // Guards the `#CONTENT` fallback path, where the related trail is in scope.
+  removeSelectors: ['[id^="loop-related"]'],
+  titleSelector: "header h2",
+  bylineSelector: 'header a[href^="mailto:"] strong',
+};
+
 export function isNativeMigratedHost(host: string): boolean {
   return nativeMigratedHosts.includes(host);
 }
@@ -75,6 +99,9 @@ export function getNativeSiteHints(host: string): NativeSiteHints | undefined {
   }
   if (host === QUOTE_HOST) {
     return quoteHints;
+  }
+  if (host === NT_HOST) {
+    return ntHints;
   }
   return undefined;
 }

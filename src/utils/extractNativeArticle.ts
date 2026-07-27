@@ -38,6 +38,27 @@ function ensureBaseHref(document: Document, baseURL: string) {
 }
 
 /**
+ * NT marks the headline as `<h2>`, so its archive snapshot carries no `<h1>` at
+ * all. Every downstream heuristic keys off `<h1>` — the title fallback,
+ * `captureDek`, Readability's own title lookup — so rename the hinted heading
+ * once instead of teaching each of them a second selector.
+ */
+function promoteTitleHeading(root: Element, selector: string | undefined) {
+  if (!selector) return;
+  if (root.querySelector("h1")) return;
+
+  const heading = root.querySelector(selector);
+  const ownerDocument = root.ownerDocument;
+  if (!heading || !heading.parentNode || !ownerDocument) return;
+
+  const h1 = ownerDocument.createElement("h1");
+  while (heading.firstChild) {
+    h1.appendChild(heading.firstChild);
+  }
+  heading.parentNode.replaceChild(h1, heading);
+}
+
+/**
  * Telegraaf wraps hero images in `<button>` (lightbox). Readability drops
  * button contents, so unwrap before parsing.
  */
@@ -428,9 +449,18 @@ function extractFtByline(root: Element): string | undefined {
   return fallback;
 }
 
-/** Best-effort byline from publisher markup Readability often misses. */
-function extractByline(root: Element): string | undefined {
-  for (const selector of AUTHOR_SELECTORS) {
+/** Best-effort byline from publisher markup Readability often misses.
+ * A per-site `bylineSelector` hint wins over the generic profile-link probes —
+ * NT credits its authors with a bare `mailto:` link. */
+function extractByline(
+  root: Element,
+  hintSelector?: string
+): string | undefined {
+  const selectors = hintSelector
+    ? [hintSelector, ...AUTHOR_SELECTORS]
+    : AUTHOR_SELECTORS;
+
+  for (const selector of selectors) {
     const element = root.querySelector(selector);
     const text = element?.textContent?.replace(/\s+/g, " ").trim();
     if (
@@ -456,6 +486,7 @@ function stripPublisherTitleSuffix(title: string): string {
     .replace(/\s*\|\s*Trouw\s*$/i, "")
     .replace(/\s*\|\s*AD\.nl\s*$/i, "")
     .replace(/\s*\|\s*Quote\s*$/i, "")
+    .replace(/\s*\|\s*NT\s*$/, "")
     .trim();
 }
 
@@ -500,11 +531,12 @@ function stripTruncatedSocialTitles(document: Document) {
 }
 
 const CHROME_HEADING =
-  /^(lees meer|lees ook|meer lezen|leestips|gerelateerd|gerelateerde artikelen|volg .+ op sociale media|volg ons( op sociale media)?|promoted content|follow the topics in this article|comment guidelines|latest from .+)$/i;
+  /^(lees meer|lees ook|meer lezen|leestips|gerelateerd|gerelateerde artikelen|volg .+ op sociale media|volg ons( op sociale media)?|promoted content|follow the topics in this article|comment guidelines|latest from .+|abonneer nu.*|kies uw abonnement|dit artikel gratis lezen\?)$/i;
 
 /**
- * Drop end-of-article promo blocks ("Lees meer", "Volg … op sociale media")
- * and everything after the first matching heading.
+ * Drop end-of-article promo blocks ("Lees meer", "Volg … op sociale media",
+ * NT's "Abonneer nu …" subscription wall) and everything after the first
+ * matching heading.
  */
 function removeChromeTail(root: ReturnType<typeof parse>) {
   const headings = root.querySelectorAll("h2, h3");
@@ -914,6 +946,7 @@ export async function extractNativeArticle(
     clone.querySelectorAll(selector).forEach((element) => element.remove());
   });
 
+  promoteTitleHeading(clone, hints?.titleSelector);
   unwrapImageButtons(clone);
   removeRelatedTeasers(clone);
   // Capture lead dims from archive min-width/min-height styles first…
@@ -928,7 +961,7 @@ export async function extractNativeArticle(
   const headingTitle =
     clone.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim() || "";
   // Capture byline before stripping the DPG author/date chrome cluster.
-  const hintByline = extractByline(clone);
+  const hintByline = extractByline(clone, hints?.bylineSelector);
   removeAuthorMetaChrome(clone);
 
   ensureBaseHref(document, baseURL);
