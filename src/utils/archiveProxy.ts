@@ -1,7 +1,7 @@
 import {
   ARCHIVE_BASE,
   buildArchiveChallengeUrl,
-  isCaptchaHtml,
+  isCaptchaResponse,
 } from "@/utils/archiveDetect";
 
 export type ProxyFetchResult = {
@@ -150,7 +150,7 @@ async function fetchArchiveDirect(
 ): Promise<ProxyFetchResult> {
   const response = await fetch(normalizeArchiveTarget(targetUrl));
   const html = await response.text();
-  const captcha = !response.ok || isCaptchaHtml(html);
+  const captcha = isCaptchaResponse(response.status, html);
 
   return {
     status: response.status,
