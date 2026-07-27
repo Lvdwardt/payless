@@ -1,0 +1,192 @@
+{
+  "ad-nl-huwelijk": {
+    "original": "https://www.ad.nl/binnenland/bijzonder-huwelijk-natasja-51-trouwt-niet-alleen-met-erik-51-maar-ook-met-berlinda-55~a691c576/",
+    "snapshot": "https://archive.is/8TX6U",
+    "status": 200,
+    "captcha": false,
+    "bytes": 409710,
+    "titles": [
+      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar \u00f3\u00f3k met Berlinda (55) | Nieuws | AD.nl"
+    ],
+    "h1s": [
+      "Bijzonder huwelijk: Natasja (51) trouwt niet alleen met Erik (51), maar \u00f3\u00f3k met Berlinda (55)"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "article-content",
+      "article-content-bottom"
+    ],
+    "content_fixture": "ad-nl-huwelijk.content.html",
+    "notes": [
+      "DPG Media template (www.ad.nl). Archive snapshot https://archive.is/8TX6U",
+      "Article root: #article-content inside archive #CONTENT",
+      "Body copy lives in styled divs (font-size:18px), not <p> tags",
+      "Lead is first bold 18px block after h1",
+      "Hero figure + figcaption present; related-news cards appear after article body",
+      "JSON-LD NewsArticle often stripped/broken in archive HTML \u2014 do not rely on it",
+      "Chrome to strip: Premium badge SVG, author avatar chrome OK to keep byline text, related articles, embeds"
+    ],
+    "content_bytes": 118665
+  },
+  "telegraaf-gardameer": {
+    "original": "https://www.telegraaf.nl/nieuws/ondanks-hagel-en-noodweer-blijft-gardameer-populair-we-laten-onze-vakantie-niet-verpesten/158897974/",
+    "resolved_original": "https://www.telegraaf.nl/nieuws/ondanks-hagel-en-noodweer-blijft-gardameer-populair-we-laten-onze-vakantie-niet-verpesten/158897974.html",
+    "snapshot": "https://archive.ph/X1pCt",
+    "status": 200,
+    "captcha": false,
+    "bytes": 773511,
+    "content_fixture": "telegraaf-gardameer.content.html",
+    "content_bytes": 159977,
+    "titles": [
+      "Gardameer noodweer en hagelbuien: zo beschermen Nederlanders hun auto | De Telegraaf"
+    ],
+    "h1s": [
+      "Ondanks hagel en noodweer blijft Gardameer populair: \u2019We laten onze vakantie niet verpesten\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "__next",
+      "recirculationAside-ArticleGroup-Laatste-nieuws",
+      "structured-data-article-breadcrumbs",
+      "structured-data-news-article"
+    ],
+    "notes": [
+      "Snapshot https://archive.ph/X1pCt for the requested gardameer article",
+      "Primary Mediahuis extraction fixture"
+    ]
+  },
+  "trouw-vierdaagse": {
+    "original": "https://www.trouw.nl/binnenland/het-militaire-dorp-van-de-vierdaagse-is-zwaar-beveiligd-maar-geopolitiek-speelt-er-geen-rol~bcf724ac/",
+    "snapshot": "https://archive.is/0bjdC",
+    "status": 200,
+    "captcha": false,
+    "bytes": 293044,
+    "titles": [
+      "Het militaire dorp van de Vierdaagse is zwaar beveiligd, maar geopolitiek speelt er geen rol | Trouw"
+    ],
+    "h1s": [
+      "Het militaire dorp van de Vierdaagse is zwaar beveiligd, maar geopolitiek speelt er geen rol"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "article-content",
+      "article-content-bottom",
+      "main"
+    ],
+    "content_fixture": "trouw-vierdaagse.content.html",
+    "content_bytes": 101179,
+    "notes": [
+      "DPG Media template shared with AD (www.trouw.nl). Snapshot https://archive.is/0bjdC",
+      "Article root: #article-content inside archive #CONTENT \u2014 same hints as DPG regionals",
+      "Byline via /auteur/Cindy Cloin",
+      "og:title truncated with \u2026; prefer h1",
+      "Not in src/data/sites/multiple/dpg.ts (legacy rules live in single/trouw.ts) but same article chrome"
+    ]
+  },
+  "volkskrant-venezuela": {
+    "original": "https://www.volkskrant.nl/buitenland/maanden-na-trumps-inval-zijn-venezolanen-ontgoocheld-en-boos-de-amerikanen-verraden-ons-nu-ook~b8ba72d0/",
+    "snapshot": "https://archive.is/zUgXu",
+    "status": 200,
+    "captcha": false,
+    "bytes": 351124,
+    "titles": [
+      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: \u2018De Amerikanen verraden ons nu ook\u2019 | de Volkskrant"
+    ],
+    "h1s": [
+      "Maanden na Trumps inval zijn Venezolanen ontgoocheld en boos: \u2018De Amerikanen verraden ons nu ook\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "article-content",
+      "article-content-bottom",
+      "main"
+    ],
+    "content_fixture": "volkskrant-venezuela.content.html",
+    "content_bytes": 147095,
+    "notes": [
+      "DPG Media template shared with AD/Trouw (www.volkskrant.nl). Snapshot https://archive.is/zUgXu",
+      "Article root: #article-content; byline Marjolein van de Water",
+      "Legacy zap rules in src/data/sites/single/volkskrant.ts"
+    ]
+  },
+  "ft-musk": {
+    "original": "https://www.ft.com/content/5ef14997-982e-4f03-8548-b5d67202623a",
+    "snapshot": "https://archive.is/iqyNt",
+    "status": 200,
+    "captcha": false,
+    "bytes": 590008,
+    "titles": [
+      "Elon Musk: \u2018Aren\u2019t you entertained?\u2019 | Financial Times"
+    ],
+    "h1s": [
+      "Elon Musk: \u2018Aren\u2019t you entertained?\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "o-topper",
+      "site-content"
+    ],
+    "content_fixture": "ft-musk.content.html",
+    "content_bytes": 217567,
+    "notes": [
+      "FT Lunch with the FT. Snapshot https://archive.is/iqyNt",
+      "Headline in #o-topper; body/byline in #site-content",
+      "Byline via www.ft.com/roula-khalaf profile link",
+      "Legacy zap rules in src/data/sites/single/ft.ts"
+    ]
+  },
+  "ft-htsi": {
+    "original": "https://www.ft.com/content/85cbc4e1-24e4-4c36-8747-352258cfc038",
+    "snapshot": "https://archive.is/CXjOT",
+    "status": 200,
+    "captcha": false,
+    "bytes": 529763,
+    "titles": [
+      "HTSI editor\u2019s letter: the pull of Country | Financial Times"
+    ],
+    "h1s": [
+      "HTSI editor\u2019s letter: the pull of Country"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "o-topper",
+      "site-content"
+    ],
+    "content_fixture": "ft-htsi.content.html",
+    "content_bytes": 155443,
+    "notes": [
+      "FT How To Spend It editor letter. Snapshot https://archive.is/CXjOT",
+      "Byline Jo Ellison via www.ft.com/jo-ellison",
+      "Strip closing newsletter CTA"
+    ]
+  },
+  "quotenet-jort-kelder": {
+    "original": "https://www.quotenet.nl/quote-500/a72610847/jort-kelder-niet-een-vrouw-op-de-quote-500-heeft-haar-eigen-geld-verdiend/",
+    "snapshot": "https://archive.is/Wdu1v",
+    "status": 200,
+    "captcha": false,
+    "bytes": 141209,
+    "titles": [
+      "Jort Kelder: \u2018Niet \u00e9\u00e9n vrouw op de Quote 500 heeft haar eigen geld verdiend\u2019"
+    ],
+    "h1s": [
+      "Jort Kelder: \u2018Niet \u00e9\u00e9n vrouw op de Quote 500 heeft haar eigen geld verdiend\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "__next",
+      "main-content",
+      "piano-paywall-container"
+    ],
+    "content_fixture": "quotenet-jort-kelder.content.html",
+    "content_bytes": 40768,
+    "notes": [
+      "Hearst/Quote (www.quotenet.nl). Snapshot https://archive.is/Wdu1v",
+      "Article root: #main-content inside archive #CONTENT (class names stripped in archive HTML)",
+      "Dek is font-size:26px div after h1 \u2014 Readability drops it; capture+reinject",
+      "Byline via /author/lotte-verheul (Lotte Verheul)",
+      "Body in Lora 18px styled divs; #piano-paywall-container empty in archive",
+      "Chrome: Lees ook related list, abonnement.quotenet.nl shop promo, author headshot bio"
+    ]
+  }
+}
