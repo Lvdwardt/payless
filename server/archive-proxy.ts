@@ -50,6 +50,16 @@ const SESSION_TTL_MS = 60 * 60 * 1000;
 const VNC_TOKEN_TTL_MS = 10 * 60 * 1000;
 const ARCHIVE_HOST_RE = /^archive\.(is|ph|today|vn|fo)$/i;
 
+/**
+ * Drop Google/reCAPTCHA cookies older builds accidentally stored in the jar.
+ * Must be declared above the `loadCookies()` call below — as a `const` it is in
+ * the temporal dead zone until this line runs, and the ReferenceError used to
+ * be swallowed by loadCookies' catch, so no persisted jar ever survived a
+ * restart.
+ */
+const NON_ARCHIVE_COOKIE_NAME =
+  /^(NID|__Secure-|__Host-|1P_JAR|AEC|OGPC|APISID|SAPISID|HSID|SSID|SID$|SIDCC|ACCOUNT_CHOOSER|SEARCH_SAMESITE|OTZ|ANID|COMPASS|GAPS)/i;
+
 /** Legacy external noVNC URL (kept for back-compat). Prefer VNC_INTERNAL. */
 const VNC_URL = process.env.VNC_URL || "";
 /** Container mode: serve + gate noVNC same-origin through this proxy (no public VNC door). */
@@ -1287,10 +1297,6 @@ function cors(response: Response, request: Request): Response {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Drop Google/reCAPTCHA cookies older builds accidentally stored in the jar. */
-const NON_ARCHIVE_COOKIE_NAME =
-  /^(NID|__Secure-|__Host-|1P_JAR|AEC|OGPC|APISID|SAPISID|HSID|SSID|SID$|SIDCC|ACCOUNT_CHOOSER|SEARCH_SAMESITE|OTZ|ANID|COMPASS|GAPS)/i;
-
 function loadCookies() {
   if (!COOKIE_STORE_PATH) return;
   try {
@@ -1309,8 +1315,12 @@ function loadCookies() {
       `[archive-proxy] Loaded ${Object.keys(archiveCookies).length} cookies from ${COOKIE_STORE_PATH}` +
         (skipped ? ` (dropped ${skipped} non-archive)` : "")
     );
-  } catch {
-    // No file yet — start cold.
+  } catch (error) {
+    // A missing file is the normal cold start; anything else is a bug that
+    // would otherwise silently cost us the jar on every restart.
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      console.error("[archive-proxy] cookie load failed", error);
+    }
   }
 }
 
