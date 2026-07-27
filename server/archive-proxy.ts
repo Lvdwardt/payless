@@ -21,6 +21,9 @@
 
 import { readFileSync } from "node:fs";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
+// Shared with the app so the proxy, the solver and the UI can't disagree about
+// what a challenge page is. Copied into the image by Dockerfile.archive-proxy.
+import { isCaptchaResponse } from "../src/utils/archiveDetect";
 
 type Session = {
   touchedAt: number;
@@ -252,7 +255,7 @@ async function handleFetch(request: Request): Promise<Response> {
 
   const upstream = await proxyFollow(target, "GET", null, undefined, 5);
   const html = await upstream.text();
-  const captcha = upstream.status === 429 || isCaptchaHtml(html);
+  const captcha = isCaptchaResponse(upstream.status, html);
   const origin = publicOrigin(request);
 
   return withSidCookie(
@@ -365,10 +368,13 @@ async function runInteractiveSolve(sid: string, target: string) {
     });
 
     // Seed cookies we already have so archive may skip the challenge entirely.
+    // Scope them to the host we're about to solve on — a jar warmed on
+    // archive.ph is useless to a page loading archive.is.
+    const cookieDomain = `.${new URL(target).hostname}`;
     const existing = Object.entries(archiveCookies).map(([name, value]) => ({
       name,
       value,
-      domain: ".archive.ph",
+      domain: cookieDomain,
       path: "/",
     }));
     if (existing.length) {
@@ -443,8 +449,13 @@ async function runInteractiveSolve(sid: string, target: string) {
     // Give redirects a moment to settle after CAPTCHA.
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
+    // `context.cookies()` also hands back google/gstatic cookies picked up from
+    // the reCAPTCHA frames. Those must not enter the archive jar — every
+    // proxied fetch would then ship Google's cookies to archive.today, and they
+    // pad the jar so `warm` looks true-ish while `qki` is missing.
     let captured = 0;
     for (const cookie of await context.cookies()) {
+      if (!ARCHIVE_HOST_RE.test(cookie.domain.replace(/^\./, ""))) continue;
       archiveCookies[cookie.name] = cookie.value;
       captured += 1;
     }
@@ -1033,12 +1044,6 @@ function rewriteArchiveHtml(
   );
 
   return rewritten;
-}
-
-function isCaptchaHtml(html: string): boolean {
-  return /g-recaptcha|h-?captcha|cdn-cgi\/l\/chk_captcha|complete the captcha|why do i have to complete a captcha/i.test(
-    html
-  );
 }
 
 function isAllowedArchiveUrl(value: string): boolean {
