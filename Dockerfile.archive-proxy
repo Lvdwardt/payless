@@ -24,6 +24,8 @@ COPY package.json bun.lock tsconfig.json ./
 RUN bun install --frozen-lockfile
 
 COPY server ./server
+# Challenge detection is shared with the app so the two can't drift apart.
+COPY src/utils/archiveDetect.ts ./src/utils/archiveDetect.ts
 COPY docker/archive-proxy-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

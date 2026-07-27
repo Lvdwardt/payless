@@ -4,6 +4,7 @@ import { sites } from "@/data/siteRules";
 import { allSitesRules } from "@/data/allSites";
 import { Rules, CheckRule } from "@/types/siteRules";
 import type { ArticleResult } from "@/types/article";
+import { trackEvent, websiteFromUrl } from "@/hooks/useUmami";
 import { fetchArchivePage } from "@/utils/archiveProxy";
 
 export default async function getArticle(
@@ -13,6 +14,7 @@ export default async function getArticle(
 ): Promise<ArticleResult> {
   baseURL = baseURL.replace(/\/$/, "");
   const site = new URL(originalLink).hostname;
+  const domain = websiteFromUrl(originalLink);
 
   let data: string;
   try {
@@ -20,10 +22,22 @@ export default async function getArticle(
     data = page.html;
 
     if (page.captcha) {
-      return { status: "captcha", challengeUrl: page.challengeUrl || link };
+      return {
+        status: "captcha",
+        challengeUrl: page.challengeUrl || link,
+        stage: "article",
+      };
     }
   } catch (error) {
     console.error("Error fetching article:", error);
+    trackEvent("error", {
+      website: domain,
+      stage: "article",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not load the archived article",
+    });
     return {
       status: "error",
       message: "Could not load the archived article.",
@@ -50,6 +64,7 @@ export default async function getArticle(
 
   return {
     status: "ok",
+    mode: "legacy",
     html: DOMPurify.sanitize(content.toString()),
   };
 }
