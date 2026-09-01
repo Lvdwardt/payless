@@ -218,5 +218,33 @@
       "Chrome: subscription wall ('Abonneer nu ...' / 'Kies uw abonnement' / 'Dit artikel gratis lezen?') ends the body, inline 'Lees ook' aside, article > footer topics + share rows, #loop-related-* trail",
       "Sidebar <aside> (Meest gelezen + hCaptcha newsletter form) removed from the content fixture - out of scope for the article root"
     ]
+  },
+  "parool-taxi": {
+    "original": "https://www.parool.nl/amsterdam/amsterdamse-taxichauffeurs-komen-met-antwoord-op-uber-veel-mensen-beseffen-niet-dat-er-zo-n-hoog-percentage-wordt-ingehouden~b0fb53b3/",
+    "snapshot": "https://archive.is/R7Hqh",
+    "status": 200,
+    "captcha": false,
+    "bytes": 308711,
+    "titles": [
+      "Amsterdamse taxichauffeurs komen met antwoord op Uber: \u2018Veel mensen beseffen niet dat er zo\u2019n hoog percentage wordt ingehouden\u2019 | Het Parool"
+    ],
+    "h1s": [
+      "Amsterdamse taxichauffeurs komen met antwoord op Uber: \u2018Veel mensen beseffen niet dat er zo\u2019n hoog percentage wordt ingehouden\u2019"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "article-content",
+      "article-content-bottom",
+      "main"
+    ],
+    "content_fixture": "parool-taxi.content.html",
+    "content_bytes": 74511,
+    "notes": [
+      "DPG Media template shared with AD/Trouw/Volkskrant (www.parool.nl). Snapshot https://archive.is/R7Hqh",
+      "Article root: #article-content inside archive #CONTENT \u2014 same hints as DPG regionals",
+      "Byline via /auteur/Marc Kruyswijk",
+      "Dek after hero figure; og:title truncated with \u2026; prefer h1",
+      "No legacy zap file; native hints reuse the DPG template in src/data/nativeSites.ts"
+    ]
   }
 }

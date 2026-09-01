@@ -7,6 +7,8 @@ import type { NativeArticle, NativeArticleImage } from "@/types/article";
 const MIN_CONTENT_LENGTH = 200;
 const EMBED_PLACEHOLDER_TEXT = "Hier staat ingevoegde content";
 const SHOW_TEXT = 4;
+const PREFERRED_SOURCE_PROMO =
+  /voorkeursbron|google-favoriet|google favoriet|maak ons (uw|je) google|preferred source/i;
 
 export type ExtractNativeArticleResult =
   | { status: "ok"; article: NativeArticle }
@@ -97,6 +99,46 @@ function removeRelatedTeasers(root: Element) {
     const block =
       img.closest("figure") || img.closest("a") || img.parentElement || img;
     block.remove();
+  }
+}
+
+/**
+ * Google "preferred source" / "voorkeursbron" cards sit mid-article on DPG,
+ * Mediahuis, Hearst, and similar. Strip them for every host before Readability,
+ * not only via per-site `removeSelectors`.
+ */
+function climbPreferredSourcePromo(start: Element, root: Element): Element {
+  let block = start;
+  let parent = start.parentElement;
+  while (parent && parent !== root) {
+    const parentText = parent.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (parentText.length > 350 || !PREFERRED_SOURCE_PROMO.test(parentText)) {
+      break;
+    }
+    block = parent;
+    parent = parent.parentElement;
+  }
+  return block;
+}
+
+function removePreferredSourcePromo(root: Element) {
+  for (const el of [...root.querySelectorAll("[aria-label]")]) {
+    if (PREFERRED_SOURCE_PROMO.test(el.getAttribute("aria-label") || "")) {
+      el.remove();
+    }
+  }
+
+  for (const anchor of [...root.querySelectorAll("a[href]")]) {
+    const href = anchor.getAttribute("href") || "";
+    if (!/google\.com\/preferences\/source/i.test(href)) continue;
+    climbPreferredSourcePromo(anchor, root).remove();
+  }
+
+  for (const el of [...root.querySelectorAll("h2, h3, p, div, section, span")]) {
+    if (!root.contains(el)) continue;
+    const text = el.textContent?.replace(/\s+/g, " ").trim() || "";
+    if (!PREFERRED_SOURCE_PROMO.test(text) || text.length > 280) continue;
+    climbPreferredSourcePromo(el, root).remove();
   }
 }
 
@@ -484,6 +526,7 @@ function stripPublisherTitleSuffix(title: string): string {
     .replace(/\s*\|\s*Financial Times\s*$/i, "")
     .replace(/\s*\|\s*de Volkskrant\s*$/i, "")
     .replace(/\s*\|\s*Trouw\s*$/i, "")
+    .replace(/\s*\|\s*Het Parool\s*$/i, "")
     .replace(/\s*\|\s*AD\.nl\s*$/i, "")
     .replace(/\s*\|\s*Quote\s*$/i, "")
     .replace(/\s*\|\s*NT\s*$/, "")
@@ -696,8 +739,31 @@ function removeCookiePlaceholders(root: ReturnType<typeof parse>) {
   });
 }
 
-/** "Maak ons je Google-favoriet" and similar publisher promo links. */
+/** "Maak ons je Google-favoriet" / "Maak ons uw voorkeursbron" leftovers after Readability. */
 function removePromoLinks(root: ReturnType<typeof parse>) {
+  root.querySelectorAll("[aria-label]").forEach((el) => {
+    if (PREFERRED_SOURCE_PROMO.test(el.getAttribute("aria-label") || "")) {
+      el.remove();
+    }
+  });
+
+  root.querySelectorAll("h2, h3, p, div, section, span").forEach((el) => {
+    const text = el.textContent.replace(/\s+/g, " ").trim();
+    if (!PREFERRED_SOURCE_PROMO.test(text) || text.length > 280) return;
+
+    let block = el;
+    let parent = el.parentNode;
+    while (parent && parent !== root && "rawTagName" in parent && parent.rawTagName) {
+      const parentText = parent.textContent.replace(/\s+/g, " ").trim();
+      if (parentText.length > 350 || !PREFERRED_SOURCE_PROMO.test(parentText)) {
+        break;
+      }
+      block = parent as typeof el;
+      parent = parent.parentNode;
+    }
+    block.remove();
+  });
+
   root.querySelectorAll("a").forEach((anchor) => {
     const href = anchor.getAttribute("href") || "";
     const text = anchor.textContent.replace(/\s+/g, " ").trim();
@@ -705,7 +771,7 @@ function removePromoLinks(root: ReturnType<typeof parse>) {
     const isGoogleFavorite =
       /google\.com\/preferences\/source/i.test(href) ||
       /google-favoriet|google favoriet/i.test(text) ||
-      /^maak ons je google/i.test(text);
+      /^maak ons (uw|je) google/i.test(text);
     // Quote end-of-article shop cards ("Shop bij quotenet.nl …").
     const isShopPromo =
       /abonnement\.quotenet\.nl/i.test(href) || /^Shop bij\b/i.test(aria);
@@ -949,6 +1015,7 @@ export async function extractNativeArticle(
   promoteTitleHeading(clone, hints?.titleSelector);
   unwrapImageButtons(clone);
   removeRelatedTeasers(clone);
+  removePreferredSourcePromo(clone);
   // Capture lead dims from archive min-width/min-height styles first…
   const leadFigureHtml = captureLeadFigure(clone);
   // Quote-style dek sits beside the h1 and is dropped by Readability.

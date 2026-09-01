@@ -20,6 +20,8 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 | `quotenet-jort-kelder.content.html` | Trimmed test fixture (`#CONTENT` + `#main-content`) |
 | `nt-merwedebrug.archive.html` | Full archive.is snapshot for the NT sample URL |
 | `nt-merwedebrug.content.html` | Trimmed test fixture (`#CONTENT` + `main#main`, sidebar `<aside>` dropped) |
+| `parool-taxi.archive.html` | Full archive.is snapshot for the Parool sample URL |
+| `parool-taxi.content.html` | Trimmed test fixture (`#CONTENT` + `#article-content`) |
 | `manifest.json` | URLs, snapshot IDs, structural notes |
 
 ## Product sample URLs
@@ -57,6 +59,11 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
    `https://www.nt.nl/wegvervoer/2026/07/27/tientallen-trucks-negeren-verbod-op-merwedebrug-en-tikken-500-euro-af/`  
    Snapshot: `https://archive.is/0Esa5`  
    Headline (an `<h2>`, not `<h1>`): *Tientallen trucks negeren verbod op Merwedebrug en tikken 500 euro af*
+
+8. **Parool (DPG template)**  
+   `https://www.parool.nl/amsterdam/amsterdamse-taxichauffeurs-komen-met-antwoord-op-uber-veel-mensen-beseffen-niet-dat-er-zo-n-hoog-percentage-wordt-ingehouden~b0fb53b3/`  
+   Snapshot: `https://archive.is/R7Hqh`  
+   H1: *Amsterdamse taxichauffeurs komen met antwoord op Uber: ‘Veel mensen beseffen niet dat er zo’n hoog percentage wordt ingehouden’*
 
 ## Structural findings (load-bearing for the extractor)
 
@@ -108,6 +115,14 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 - Byline via `/author/` (`Lotte Verheul` in the sample).
 - Strip Piano stub, “Lees ook” related list, and `abonnement.quotenet.nl` shop cards.
 - Native hints live in `src/data/nativeSites.ts` (no legacy zap file yet).
+
+### Parool (`parool-taxi`)
+
+- Same DPG `#article-content` / `#article-content-bottom` chrome as AD/Trouw/Volkskrant.
+- Byline via `/auteur/` (`Marc Kruyswijk` in the sample).
+- Dek is the 18px block after the hero figure; Readability drops the header cluster, so capture + re-inject.
+- Strip `| Het Parool` title suffix; og:title is truncated with `…`.
+- No legacy zap file — native hints reuse the DPG template entry in `src/data/nativeSites.ts`.
 
 ### NT (`nt-merwedebrug`)
 
