@@ -16,16 +16,18 @@ export type NativeSiteHints = {
 const TELEGRAAF_HOST = "www.telegraaf.nl";
 const TROUW_HOST = "www.trouw.nl";
 const VOLKSKRANT_HOST = "www.volkskrant.nl";
+const PAROOL_HOST = "www.parool.nl";
 const FT_HOST = "www.ft.com";
 const QUOTE_HOST = "www.quotenet.nl";
 const NT_HOST = "www.nt.nl";
 
 /** DPG-family hosts that share the `#article-content` article root
- * (regional AD titles + Trouw + Volkskrant). Verified per-host via fixtures. */
+ * (regional AD titles + Trouw + Volkskrant + Parool). Verified per-host via fixtures. */
 const dpgTemplateHosts: string[] = [
   ...dpg.sites,
   TROUW_HOST,
   VOLKSKRANT_HOST,
+  PAROOL_HOST,
 ];
 
 /** Hosts allowed to use native (v2) extraction. Keep this list narrow — a

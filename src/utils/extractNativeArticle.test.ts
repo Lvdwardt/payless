@@ -306,6 +306,95 @@ describe("extractNativeArticle", () => {
     expect(result.article.textContent).toMatch(/blarenpost[\s\S]*Na tien minuten/);
   });
 
+  test("extracts the Parool (DPG template) fixture into a structured article", async () => {
+    const html = readFixture("parool-taxi.content.html");
+
+    const result = await extractNativeArticle(html, {
+      host: "www.parool.nl",
+      baseURL: "https://archive.is/R7Hqh",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    expect(result.article.title).toContain("taxichauffeurs");
+    expect(result.article.title).toContain("Uber");
+    expect(result.article.title).not.toMatch(/…$/);
+    expect(result.article.title).not.toMatch(/\|\s*Het Parool/i);
+    expect(result.article.byline).toBe("Marc Kruyswijk");
+    expect(result.article.length).toBeGreaterThan(200);
+    expect(result.article.textContent).toContain("Mostapha Ahidar");
+    expect(result.article.textContent).toContain("NLCabs");
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.textContent).toContain("lijdzaam toezien");
+    expect(result.article.images.length).toBeGreaterThan(0);
+    for (const image of result.article.images) {
+      expect(image.src.startsWith("https://archive.is/R7Hqh/")).toBe(true);
+    }
+    expect(result.article.content).toContain(
+      "cd7491fe77c9f1b5991e5175136f1931aa4c82d3"
+    );
+    expect(result.article.content).not.toContain(
+      "Dit artikel is geschreven door"
+    );
+    expect(result.article.content).not.toContain("Lees meer");
+    expect(result.article.content).not.toContain("Google-favoriet");
+    expect(result.article.content).not.toContain("voorkeursbron");
+    expect(result.article.content).not.toContain(
+      "Stel ons in als voorkeursbron"
+    );
+    // Related cards after #article-content-bottom must not leak.
+    expect(result.article.content).not.toContain("taxi-automaat");
+    expect(result.article.content).not.toContain("handremmethode");
+  });
+
+  test("strips the Google preferred-source promo on every native host family", async () => {
+    const paragraphs = Array.from(
+      { length: 6 },
+      (_, i) =>
+        `<p>Paragraaf ${i} met genoeg tekst over Amsterdamse taxichauffeurs om Readability te overtuigen dat dit een echt artikel is.</p>`
+    ).join("");
+
+    const html = `<!DOCTYPE html><html><body><div id="CONTENT">
+      <main id="main">
+        <article id="article-content">
+          <div id="main-content">
+            <h1>Amsterdamse taxichauffeurs komen met een antwoord op Uber</h1>
+            <a href="https://www.parool.nl/auteur/marc-kruyswijk/">Marc Kruyswijk</a>
+            ${paragraphs}
+            <section aria-label="Google voorkeursbron melding">
+              <h2>Maak ons uw voorkeursbron</h2>
+              <p>Stel ons in als voorkeursbron in Google, zodat onze artikelen daar vaker verschijnen.</p>
+              <a href="https://www.google.com/preferences/source?q=example">Maak ons uw Google-favoriet</a>
+            </section>
+            ${paragraphs}
+          </div>
+        </article>
+      </main>
+    </div></body></html>`;
+
+    for (const host of [
+      "www.parool.nl",
+      "www.telegraaf.nl",
+      "www.quotenet.nl",
+      "www.nt.nl",
+      "www.ft.com",
+    ]) {
+      const result = await extractNativeArticle(html, {
+        host,
+        baseURL: "https://archive.is/test",
+      });
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") return;
+
+      expect(result.article.textContent).toContain("taxichauffeurs");
+      expect(result.article.content).not.toContain("voorkeursbron");
+      expect(result.article.content).not.toContain("Google-favoriet");
+      expect(result.article.content).not.toContain("google.com/preferences");
+    }
+  });
+
   test("extracts the Quote (Hearst) fixture into a structured article", async () => {
     const html = readFixture("quotenet-jort-kelder.content.html");
 
