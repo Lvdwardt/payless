@@ -22,6 +22,8 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 | `nt-merwedebrug.content.html` | Trimmed test fixture (`#CONTENT` + `main#main`, sidebar `<aside>` dropped) |
 | `parool-taxi.archive.html` | Full archive.is snapshot for the Parool sample URL |
 | `parool-taxi.content.html` | Trimmed test fixture (`#CONTENT` + `#article-content`) |
+| `nrc-voorlinden.archive.html` | Full archive.is snapshot for the NRC sample URL |
+| `nrc-voorlinden.content.html` | Trimmed test fixture (`#CONTENT` + `main#main-content`) |
 | `manifest.json` | URLs, snapshot IDs, structural notes |
 
 ## Product sample URLs
@@ -64,6 +66,11 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
    `https://www.parool.nl/amsterdam/amsterdamse-taxichauffeurs-komen-met-antwoord-op-uber-veel-mensen-beseffen-niet-dat-er-zo-n-hoog-percentage-wordt-ingehouden~b0fb53b3/`  
    Snapshot: `https://archive.is/R7Hqh`  
    H1: *Amsterdamse taxichauffeurs komen met antwoord op Uber: ‘Veel mensen beseffen niet dat er zo’n hoog percentage wordt ingehouden’*
+
+9. **NRC**  
+   `https://www.nrc.nl/nieuws/2026/09/04/iedereen-wil-kijken-naar-fred-maar-niet-als-beeldend-kunstenaar-bij-museum-voorlinden-a4935899`  
+   Snapshot: `https://archive.is/EwPA5`  
+   H1: *Iedereen wil kijken naar Fred, maar niet als beeldend kunstenaar bij museum Voorlinden*
 
 ## Structural findings (load-bearing for the extractor)
 
@@ -123,6 +130,15 @@ Captured 2026-07-18 for the native reader plan. Use these as characterization in
 - Dek is the 18px block after the hero figure; Readability drops the header cluster, so capture + re-inject.
 - Strip `| Het Parool` title suffix; og:title is truncated with `…`.
 - No legacy zap file — native hints reuse the DPG template entry in `src/data/nativeSites.ts`.
+
+### NRC (`nrc-voorlinden`)
+
+- Archive `#CONTENT` + publisher `main#main-content`; the story is the only `<article>` in that `main`, and every related trail ("Beeldende kunst", "Meer van *auteur*") sits in `article > footer`.
+- Class names are stripped, but NRC's own aria-labels survive — the byline hangs off `ul[aria-label="Artikel- en auteursinformatie"]`. It has to: `a[rel="author"]` wraps a headshot plus 30+ characters of link text, so `removeRelatedTeasers` drops it before the byline probes run.
+- The header columns the headline and the dek into **separate blocks**, so the dek is a sibling of an `h1` ancestor, not of the `h1`. The one real `h1` sibling is the rubriek toggle-tip ("Een terugkerende rubriek…") — chrome that used to win the dek slot. Hence `captureDek` skipping button-bearing blocks and climbing to ancestor siblings.
+- The 44px author headshot precedes the 1024px hero and carries the author's name as `alt`, which was enough to make it the lead figure. `isLikelyLeadImage` now rejects images with small measured dimensions.
+- Chrome to strip: `dmt-util-bar` (Luister / Geef cadeau / Deel / Leeslijst / Downloaden), the hero's "Zoom in" button, publish date + reading time. `| NRC` / `- NRC` title suffix.
+- No legacy zap file — native hints only.
 
 ### NT (`nt-merwedebrug`)
 

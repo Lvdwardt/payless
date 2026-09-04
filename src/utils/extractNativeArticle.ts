@@ -156,6 +156,9 @@ function isLikelyLeadImage(img: Element): boolean {
     /100vw/.test(sizes) || /\b([6-9]\d{2}|1\d{3})px\b/.test(sizes);
   const hasThumbHint = /\b(80|100|120)px\b/.test(sizes);
   if (hasThumbHint && !hasLargeHint && !hasLargeDims) return false;
+  // An author headshot carries a person's name as alt text and would otherwise
+  // pass on `alt.length` alone (NRC renders it at 44px, ahead of the hero).
+  if (dims && dims.width < 200 && !hasLargeHint) return false;
   return hasLargeHint || hasLargeDims || alt.length >= 8;
 }
 
@@ -242,27 +245,40 @@ function ensureLeadFigure(contentHtml: string, leadFigureHtml: string | null): s
  * immediately after `<h1>`. Readability treats that header cluster as chrome
  * and drops it — capture the text so we can re-inject after the lead figure.
  */
+function dekText(element: Element): string | null {
+  if (
+    element.querySelector(
+      'a[href*="/author/"], a[href*="/auteur/"], address, time, button'
+    ) ||
+    element.tagName === "ADDRESS" ||
+    element.tagName === "TIME"
+  ) {
+    return null;
+  }
+  if (element.querySelector("img")) return null;
+
+  const text = element.textContent?.replace(/\s+/g, " ").trim() || "";
+  if (text.length < 40 || text.length > 600) return null;
+
+  return text;
+}
+
 function captureDek(root: Element): string | null {
   const h1 = root.querySelector("h1");
   if (!h1) return null;
 
-  let el: Element | null = h1.nextElementSibling;
-  for (let i = 0; i < 6 && el; i += 1, el = el.nextElementSibling) {
-    if (
-      el.querySelector(
-        'a[href*="/author/"], a[href*="/auteur/"], address, time'
-      ) ||
-      el.tagName === "ADDRESS" ||
-      el.tagName === "TIME"
-    ) {
-      continue;
+  // NRC columns the headline and the dek into separate header blocks, so the
+  // dek is a sibling of an h1 ancestor rather than of the h1 itself. Widen the
+  // scan one level at a time; the closest match still wins.
+  let node: Element | null = h1;
+  for (let depth = 0; depth < 4 && node && node !== root; depth += 1) {
+    let el: Element | null = node.nextElementSibling;
+    for (let i = 0; i < 6 && el; i += 1, el = el.nextElementSibling) {
+      const text = dekText(el);
+      if (!text) continue;
+      return `<p data-payless-dek="true">${escapeHtml(text)}</p>`;
     }
-    if (el.querySelector("img")) continue;
-
-    const text = el.textContent?.replace(/\s+/g, " ").trim() || "";
-    if (text.length < 40 || text.length > 600) continue;
-
-    return `<p data-payless-dek="true">${escapeHtml(text)}</p>`;
+    node = node.parentElement;
   }
 
   return null;
@@ -530,6 +546,7 @@ function stripPublisherTitleSuffix(title: string): string {
     .replace(/\s*\|\s*AD\.nl\s*$/i, "")
     .replace(/\s*\|\s*Quote\s*$/i, "")
     .replace(/\s*\|\s*NT\s*$/, "")
+    .replace(/\s*[|-]\s*NRC\s*$/i, "")
     .trim();
 }
 
