@@ -20,6 +20,7 @@ const PAROOL_HOST = "www.parool.nl";
 const FT_HOST = "www.ft.com";
 const QUOTE_HOST = "www.quotenet.nl";
 const NT_HOST = "www.nt.nl";
+const NRC_HOST = "www.nrc.nl";
 
 /** DPG-family hosts that share the `#article-content` article root
  * (regional AD titles + Trouw + Volkskrant + Parool). Verified per-host via fixtures. */
@@ -39,6 +40,7 @@ export const nativeMigratedHosts: string[] = [
   FT_HOST,
   QUOTE_HOST,
   NT_HOST,
+  NRC_HOST,
 ];
 
 const dpgHints: NativeSiteHints = {
@@ -85,6 +87,18 @@ const ntHints: NativeSiteHints = {
   bylineSelector: 'header a[href^="mailto:"] strong',
 };
 
+/** NRC: the story is the only `<article>` under `main#main-content`; the
+ * related trails ("Meer van …") live in `article > footer`. Class names are
+ * stripped in the archive HTML, so the byline hangs off NRC's own aria-label
+ * on the author/date list — the author anchor itself wraps a headshot and is
+ * dropped as a teaser before the byline probes run. */
+const nrcHints: NativeSiteHints = {
+  rootSelector: "main#main-content article",
+  removeSelectors: ["article > footer", "dmt-util-bar"],
+  bylineSelector:
+    'ul[aria-label="Artikel- en auteursinformatie"] span[slot="trigger"]',
+};
+
 export function isNativeMigratedHost(host: string): boolean {
   return nativeMigratedHosts.includes(host);
 }
@@ -104,6 +118,9 @@ export function getNativeSiteHints(host: string): NativeSiteHints | undefined {
   }
   if (host === NT_HOST) {
     return ntHints;
+  }
+  if (host === NRC_HOST) {
+    return nrcHints;
   }
   return undefined;
 }
