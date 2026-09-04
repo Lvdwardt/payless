@@ -517,6 +517,55 @@ describe("extractNativeArticle", () => {
     expect(result.article.content).not.toContain("WhatsApp");
   });
 
+  test("extracts the NRC fixture into a structured article", async () => {
+    const html = readFixture("nrc-voorlinden.content.html");
+
+    const result = await extractNativeArticle(html, {
+      host: "www.nrc.nl",
+      baseURL: "https://archive.is/EwPA5",
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+
+    expect(result.article.title).toBe(
+      "Iedereen wil kijken naar Fred, maar niet als beeldend kunstenaar bij museum Voorlinden"
+    );
+    expect(result.article.title).not.toMatch(/[|-]\s*NRC\s*$/);
+    // The author anchor wraps a headshot and is dropped as a teaser, so the
+    // byline comes off NRC's aria-labelled author/date list.
+    expect(result.article.byline).toBe("Emma Vos");
+    expect(result.article.length).toBeGreaterThan(200);
+    expect(result.article.textContent).toContain("museum Voorlinden");
+    expect(result.article.textContent).toContain("B&B vol Liefde");
+    // Dek sits in its own header block, not beside the h1.
+    expect(result.article.content).toContain("data-payless-dek");
+    expect(result.article.content).toContain(
+      "niet meewerken aan een expositie"
+    );
+    expect(result.article.content).toContain("<h2>Fred een hedendaags icoon?</h2>");
+    // Lead is the 1024px hero, not the 44px author headshot beside it.
+    expect(result.article.content).toContain(
+      '<figure data-payless-lead="true"><img src="https://archive.is/EwPA5/365ee24b13d47c2dfacb6e93abe6a89d8fed1cee.webp"'
+    );
+    expect(result.article.images.length).toBeGreaterThan(0);
+    for (const image of result.article.images) {
+      expect(image.src.startsWith("https://archive.is/EwPA5/")).toBe(true);
+    }
+    expect(result.article.content).toContain(
+      "7c535faef8a9065b31dc8c8a567f28462b092200"
+    );
+    // Kicker toggle-tip must not be mistaken for the dek.
+    expect(result.article.content).not.toContain("Een terugkerende rubriek");
+    // Header meta, util bar and the article > footer trails must not leak.
+    expect(result.article.content).not.toContain("Gepubliceerd op");
+    expect(result.article.content).not.toContain("Leestijd");
+    expect(result.article.content).not.toContain("Geef cadeau");
+    expect(result.article.content).not.toContain("Leeslijst");
+    expect(result.article.content).not.toContain("Meer van Emma Vos");
+    expect(result.article.content).not.toContain("culturele hoogtepunten");
+  });
+
   test("promotes the NT h2 headline and strips the subscription wall", async () => {
     const paragraphs = Array.from(
       { length: 6 },

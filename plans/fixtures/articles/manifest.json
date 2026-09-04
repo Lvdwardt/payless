@@ -246,5 +246,34 @@
       "Dek after hero figure; og:title truncated with \u2026; prefer h1",
       "No legacy zap file; native hints reuse the DPG template in src/data/nativeSites.ts"
     ]
+  },
+  "nrc-voorlinden": {
+    "original": "https://www.nrc.nl/nieuws/2026/09/04/iedereen-wil-kijken-naar-fred-maar-niet-als-beeldend-kunstenaar-bij-museum-voorlinden-a4935899",
+    "snapshot": "https://archive.is/EwPA5",
+    "status": 200,
+    "captcha": false,
+    "bytes": 1327443,
+    "titles": [
+      "Tv-recensie | Iedereen wil kijken naar Fred, maar niet als beeldend kunstenaar bij museum Voorlinden - NRC"
+    ],
+    "h1s": [
+      "Iedereen wil kijken naar Fred, maar niet als beeldend kunstenaar bij museum Voorlinden"
+    ],
+    "interesting_ids": [
+      "CONTENT",
+      "main-content"
+    ],
+    "content_fixture": "nrc-voorlinden.content.html",
+    "content_bytes": 451799,
+    "notes": [
+      "NRC (www.nrc.nl). Snapshot https://archive.is/EwPA5",
+      "Article root: the only <article> under main#main-content inside archive #CONTENT",
+      "Related trails ('Beeldende kunst', 'Meer van <auteur>') live in article > footer",
+      "Byline via ul[aria-label='Artikel- en auteursinformatie'] - the a[rel=author] wraps a headshot and is dropped as a teaser before the byline probes run",
+      "Header columns headline and dek into separate blocks; the h1 sibling is the rubriek toggle-tip (captureDek climbs past it)",
+      "Author headshot renders at 44px ahead of the 1024px hero - isLikelyLeadImage now rejects small images with alt text",
+      "Chrome: dmt-util-bar (Luister / Geef cadeau / Deel / Leeslijst / Downloaden), 'Zoom in' figure button, publish date + reading time",
+      "No legacy zap file; native hints only"
+    ]
   }
 }
