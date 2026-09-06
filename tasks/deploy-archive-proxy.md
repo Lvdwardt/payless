@@ -1,8 +1,8 @@
 # Task: Deploy the payless archive proxy to the VPS via Coolify
 
 You have the **Coolify MCP server**. Deploy the already-built archive proxy as a
-new, isolated Coolify resource on the existing VPS. Do **not** touch the running
-other Coolify services or monitoring stack on the same box.
+new, isolated Coolify resource on the existing VPS. Do **not** touch other
+services or the monitoring stack on the same box.
 
 ## Background (why this exists)
 
@@ -44,29 +44,24 @@ with the user before committing if unsure.
 
 ## Steps (Coolify MCP)
 
-1. **DNS first** (may be manual / ask user): A records →
+1. **DNS first** (Cloudflare A record):
    - `archive.fly-n.nl` → `89.144.30.194`
-   - `archive.fly-n.nl` → `89.144.30.194`
+   - Do **not** map `archive-vnc.*` — there is no separate VNC domain.
 2. **Create resource:** new Docker Compose resource from the payless repo,
    compose file `docker-compose.archive-proxy.yml`. Its own project/stack —
    isolated from other Coolify services.
-3. **Env vars** on the resource:
-   - `VNC_PASSWORD` = <generate a strong value> — **required.** Without it noVNC
-     is unauthenticated = anyone can drive the browser on the VPS. Tell the user
-     the value.
-   - `PUBLIC_VNC_URL` = `https://archive.fly-n.nl/vnc.html?autoconnect=1&resize=remote&reconnect=1`
-   - (`CROSS_SITE=1`, `COOKIE_STORE_PATH=/data/cookies.json` are already in the
-     compose file — no action.)
+3. **Env vars** on the resource: none required — `VNC_INTERNAL=1` is in the
+   compose file. No `VNC_PASSWORD`, no `PUBLIC_VNC_URL`.
+   (`CROSS_SITE=1`, `COOKIE_STORE_PATH=/data/cookies.json` are already in the
+   compose file — no action.)
 4. **Domains → ports** (Coolify issues TLS):
-   - `archive.fly-n.nl` → container port `8788`
-   - `archive.fly-n.nl` → container port `6080`
+   - `archive.fly-n.nl` → container port `8788` (proxy API **and** same-origin noVNC)
 5. **Deploy.** Watch the build (first build pulls the ~2GB Playwright base, slow).
 6. **Confirm isolation:** other Coolify services + monitoring still running, untouched.
 
 ## Verify
 
 - `curl https://archive.fly-n.nl/health` → `{"ok":true,"cookies":0,"warm":false}`
-- `https://archive.fly-n.nl/vnc.html` loads noVNC (prompts for VNC_PASSWORD).
 - CORS: `curl -sI -H 'Origin: https://<vercel-app>' https://archive.fly-n.nl/health`
   → `access-control-allow-origin` echoes the origin + `allow-credentials: true`.
 
