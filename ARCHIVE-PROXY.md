@@ -1,10 +1,29 @@
 # Archive proxy
 
 Server-side archive.today fetcher with a shared cookie jar + a real Chromium you
-solve CAPTCHAs in. Exists because the browser can't do this itself: archive sends
-`Access-Control-Allow-Origin: *`, so a cross-origin `fetch` from the app is
-refused permission to carry the archive cookies you earn by solving the CAPTCHA.
-The fetch has to happen server-side.
+solve CAPTCHAs in. It's the fallback, not the main path.
+
+## Fetch order (`src/utils/archiveProxy.ts`)
+
+1. **Device cache** — IndexedDB (`payless-archive-cache`, 200 newest pages). Only
+   pages with archive content get stored, so a "no results" search never sticks.
+2. **Direct from the device** — archive sends `Access-Control-Allow-Origin: *`,
+   so a cookieless (`credentials: "omit"`) cross-origin `fetch` is readable. A
+   clean residential IP gets snapshots with zero cookies. 8s timeout.
+3. **Proxy, only when its jar is warm** (`/health` → `warm: true`, checked at
+   most once a minute). A cold jar just 429s too, so it's skipped.
+4. **Solve gate** — the CAPTCHA button opens the proxy's `/solve`, never
+   archive.today itself.
+
+Once direct gets a challenge, the device stops hitting archive directly for 10
+minutes (only when a proxy is configured). Polling a throttled IP every few
+seconds makes the throttle worse, and bursts throttle residential IPs too.
+
+Why the solve has to go through the proxy: archive clearance is tied to the
+cookie, not the IP. After a solve, a cookieless request from the same IP still
+gets 429. Solving in your own browser earns cookies that the app's cookieless
+fetch never sends (`ACAO: *` forbids credentialed reads), so the solve has to
+land in the proxy's jar.
 
 ## Why the VPS (and the catch)
 
