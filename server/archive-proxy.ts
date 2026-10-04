@@ -461,6 +461,9 @@ async function runInteractiveSolve(sid: string, target: string) {
           `[archive-proxy] driven solve fell back to noVNC for ${sid}:`,
           error instanceof Error ? error.message : error
         );
+        await page
+          .reload({ waitUntil: "domcontentloaded", timeout: 60000 })
+          .catch(() => undefined);
       }
     }
 
@@ -595,6 +598,7 @@ async function driveRecaptcha(
 ): Promise<void> {
   const session = getSession(sid);
   session.solveMode = "auto";
+  solveAudio.delete(sid);
 
   const anchor = page.frameLocator(
     'iframe[title="reCAPTCHA"], iframe[src*="/recaptcha/api2/anchor"]'
@@ -607,7 +611,7 @@ async function driveRecaptcha(
   const bframe = page.frameLocator(
     'iframe[title*="challenge"], iframe[src*="/recaptcha/api2/bframe"]'
   );
-  await bframe.locator("#recaptcha-audio-button").click({ timeout: 20000 });
+  await bframe.locator("#recaptcha-audio-button").click({ timeout: 8000 });
 
   for (let attempt = 0; attempt < 4; attempt++) {
     // Google blocks automated audio from flagged IPs — bail to noVNC.
@@ -624,7 +628,7 @@ async function driveRecaptcha(
     const src =
       (await bframe
         .locator("#audio-source")
-        .getAttribute("src", { timeout: 15000 })
+        .getAttribute("src", { timeout: 8000 })
         .catch(() => null)) ||
       (await bframe
         .locator(".rc-audiochallenge-tdownload-link")
@@ -641,10 +645,13 @@ async function driveRecaptcha(
       }
     }
     const clip = solveAudio.get(sid)?.buf ?? null;
+    if (!clip) {
+      session.solveMode = "novnc";
+      throw new Error("reCAPTCHA served no audio clip");
+    }
 
     // Tier 1: automatic transcription.
-    let answer: string | null = null;
-    if (clip) answer = await transcribeAudio(clip).catch(() => null);
+    let answer = await transcribeAudio(clip).catch(() => null);
 
     // Tier 2: hand the clip to the operator and wait for their typed answer.
     if (!answer) {
