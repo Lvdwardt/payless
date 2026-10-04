@@ -108,6 +108,8 @@ let sharedBrowser: Browser | null = null;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 /** Model + endpoint for Whisper transcription. */
 const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "whisper-1";
+/** Google stopped serving audio to the VPS IP, so the driven solve is opt-in. */
+const AUDIO_SOLVE = process.env.AUDIO_SOLVE === "1";
 
 loadCookies();
 
@@ -372,6 +374,7 @@ async function handleSolve(request: Request): Promise<Response> {
     activeSolves.add(sid);
     session.solveStatus = "solving";
     session.solveError = undefined;
+    session.solveMode = AUDIO_SOLVE ? "auto" : "novnc";
     void runInteractiveSolve(sid, target).finally(() => {
       activeSolves.delete(sid);
     });
@@ -452,7 +455,7 @@ async function runInteractiveSolve(sid: string, target: string) {
     // Escalating solve: auto (STT) → manual audio → noVNC. Any failure in the
     // driven path falls through to the universal wait below, where a human can
     // still finish it in noVNC — so this is never worse than the old flow.
-    if (!(await hasArchiveContent(page))) {
+    if (AUDIO_SOLVE && !(await hasArchiveContent(page))) {
       try {
         await driveRecaptcha(sid, page, context);
       } catch (error) {

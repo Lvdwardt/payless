@@ -108,8 +108,9 @@ the `qki` cookie expires.
 
 ### Solve tiers
 
-The `/solve` flow escalates automatically, worst case falling through to noVNC —
-so it is never worse than a manual solve:
+By default `/solve` opens noVNC straight away: Google no longer serves the audio
+challenge to the VPS IP, so the driven tiers below only waste time. Set
+`AUDIO_SOLVE=1` to re-enable them; they escalate and fall through to noVNC:
 
 1. **Auto** — the server ticks the reCAPTCHA checkbox, switches to the audio
    challenge, and (if `OPENAI_API_KEY` is set) transcribes the clip with Whisper
@@ -130,6 +131,7 @@ so it is never worse than a manual solve:
 | `VNC_INTERNAL` | _(unset)_ | `1` = serve + gate noVNC same-origin through the proxy (production default). No password, no public VNC port. |
 | `NOVNC_PORT` | `6080` | Loopback port websockify listens on inside the container. |
 | `VNC_URL` | _(unset)_ | Legacy: external noVNC URL embedded in the solve page. Superseded by `VNC_INTERNAL`. |
+| `AUDIO_SOLVE` | _(unset)_ | `1` = try the driven audio solve before noVNC. Off by default: the VPS IP gets image-only challenges. |
 | `OPENAI_API_KEY` | _(unset)_ | Enables tier-1 auto-transcription (Whisper) of the audio challenge. Unset = skip to manual audio. |
 | `TRANSCRIBE_MODEL` | `whisper-1` | STT model used when `OPENAI_API_KEY` is set. |
 | `CHROME_PATH` | _(unset)_ | Override Chromium binary; base image auto-detects. |
